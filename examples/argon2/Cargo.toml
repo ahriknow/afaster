@@ -1,0 +1,11 @@
+[package]
+name = "argon2-example"
+version = "0.0.1"
+edition = "2024"
+
+[[bin]]
+name = "argon2"
+path = "src/main.rs"
+
+[dependencies]
+afaster = { workspace = true, features = ["argon2-hash"] }

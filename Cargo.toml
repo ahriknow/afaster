@@ -1,0 +1,152 @@
+[package]
+name = "afaster"
+version = "0.0.1"
+edition = "2024"
+authors = ["ahriknow <ahriknow@ahriknow.com>"]
+license = "MIT"
+description = "High-performance Rust backend framework template with 25+ built-in business modules (WeChat ecosystem, OAuth2, push notifications, storage, payments, etc.). 🚀"
+repository = "https://github.com/ahriknow/afaster"
+keywords = ["web", "framework", "backend", "http", "async"]
+categories = ["web-programming", "asynchronous"]
+
+[workspace]
+members = ["examples/email", "examples/amap", "examples/tmap", "examples/redis", "examples/scheduler", "examples/excel", "examples/pdf", "examples/image", "examples/file", "examples/argon2", "example"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+authors = ["ahriknow <ahriknow@ahriknow.com>"]
+license = "MIT"
+repository = "https://github.com/ahriknow/afaster"
+
+[workspace.dependencies]
+afaster = { path = ".", default-features = false }
+afast = { version = "0.1.15" }
+afastdata = { version = "0.0.10" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1" }
+tokio = { version = "1", features = ["full"] }
+toml = "1"
+chrono = { version = "0.4", features = ["serde"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "chrono"] }
+reqwest = { version = "0.13.3", features = ["json", "query"] }
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+http-body-util = { version = "0.1" }
+
+[lib]
+name = "afaster"
+path = "src/lib.rs"
+
+[features]
+default = []
+jwt = ["jsonwebtoken"]
+log = ["tracing", "tracing-appender", "tracing-subscriber"]
+trace = ["log", "afast/hook", "afast-ordinary-http", "sse", "dep:rand"]
+trace-sqlite = ["trace", "db-sqlite"]
+trace-http = ["trace", "reqwest", "dep:serde_json"]
+trace-tcp = ["trace", "dep:serde_json"]
+snow = []
+clock = []
+ext = []
+nonce = ["base64", "hmac", "sha2"]
+auth-platform = []
+wx-login-mini = ["reqwest", "dep:serde_json"]
+wx-login-app = ["reqwest", "dep:serde_json"]
+wx-login-web = ["reqwest", "dep:serde_json", "afast-ordinary-http"]
+wx-official = ["reqwest", "dep:serde_json", "afast-ordinary-http"]
+argon2-hash = ["dep:argon2", "dep:rand"]
+oss = ["base64", "hmac", "sha1", "sha2", "reqwest", "reqwest/form", "dep:serde_json"]
+cos = ["hmac", "sha1", "sha2", "reqwest"]
+wx-virtual-pay = ["afast-ordinary-http", "hmac", "sha1", "sha2", "dep:serde_json", "reqwest", "base64", "aes", "cbc"]
+github-oauth2 = ["afast-ordinary-http", "reqwest", "dep:serde_json", "nonce"]
+wx-sec-check = ["afast-ordinary-http", "reqwest", "dep:serde_json", "sha1", "base64", "aes", "cbc"]
+wx-pay-h5 = ["afast-ordinary-http", "reqwest", "dep:serde_json", "base64", "dep:rsa", "dep:aes-gcm", "dep:pem", "dep:x509-certificate", "dep:sha2-v10", "dep:rand"]
+wx-pay-native = ["afast-ordinary-http", "reqwest", "dep:serde_json", "base64", "dep:rsa", "dep:aes-gcm", "dep:pem", "dep:x509-certificate", "dep:sha2-v10", "dep:rand", "wx-pay-h5"]
+wx-pay-app = ["afast-ordinary-http", "reqwest", "dep:serde_json", "base64", "dep:rsa", "dep:aes-gcm", "dep:pem", "dep:x509-certificate", "dep:sha2-v10", "dep:rand", "wx-pay-h5"]
+wx-pay-js-mini = ["afast-ordinary-http", "reqwest", "dep:serde_json", "base64", "dep:rsa", "dep:aes-gcm", "dep:pem", "dep:x509-certificate", "dep:sha2-v10", "dep:rand", "wx-pay-h5"]
+wx-pay-mini = ["wx-pay-js-mini"]
+wx-pay-js = ["wx-pay-js-mini"]
+db-postgres = ["sqlx/postgres"]
+db-sqlite = ["sqlx/sqlite"]
+db-mysql = ["sqlx/mysql"]
+email = ["lettre"]
+sms-ali = ["afast-ordinary-http", "base64", "reqwest", "reqwest/form", "dep:serde_json", "hmac", "sha1"]
+sms-tencent = ["afast-ordinary-http", "reqwest", "dep:serde_json", "hmac", "sha2"]
+amap = ["reqwest", "dep:serde_json"]
+tmap = ["reqwest", "dep:serde_json"]
+ali-pay-web = ["afast-ordinary-http", "reqwest", "reqwest/form", "dep:serde_json", "base64", "dep:rsa", "dep:pem", "dep:sha2-v10"]
+rbac = []
+regex-util = ["regex"]
+socket-binary = []
+socket-ws = ["afast/ordinary-ws"]
+sse = ["afast/ordinary-sse", "dep:serde_json"]
+push = ["dep:serde_json"]
+push-getui = ["push", "reqwest", "dep:serde_json", "sha2"]
+push-jpush = ["push", "reqwest", "dep:serde_json", "base64"]
+push-xiaomi = ["push", "reqwest", "reqwest/form", "dep:serde_json"]
+redis = ["dep:redis"]
+valkey = ["dep:redis"]
+scheduler = ["dep:cron"]
+memkv = []
+rate-limit = ["afast/rate-limit"]
+excel = ["dep:calamine", "dep:rust_xlsxwriter", "dep:serde_json", "dep:csv"]
+pdf = ["dep:printpdf", "dep:allsorts"]
+image = ["dep:image", "dep:imageproc", "dep:ab_glyph"]
+file = []
+afast-ts = ["afast/ts"]
+afast-js = ["afast/js"]
+afast-ws = ["afast/ws"]
+afast-http = ["afast/http"]
+afast-tcp = ["afast/tcp"]
+afast-code = ["afast/code"]
+afast-doc = ["afast/doc"]
+afast-kt = ["afast/kt"]
+afast-seq64 = ["afast/seq64"]
+afast-len64 = ["afast/len64"]
+afast-ordinary-http = ["afast/ordinary-http", "dep:hyper", "dep:http-body-util"]
+afast-tag-u8 = ["afast/tag-u8"]
+afast-tag-u16 = ["afast/tag-u16"]
+afast-tag-u32 = ["afast/tag-u32"]
+
+[dependencies]
+afast = { workspace = true }
+afastdata = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+
+aes = { version = "0.9", optional = true }
+base64  = { version = "0.22", optional = true }
+cbc = { version = "0.2", optional = true }
+hmac    = { version = "0.13", optional = true }
+hyper = { version = "1", features = ["server", "http1", "http2"], optional = true }
+http-body-util = { version = "0.1", optional = true }
+jsonwebtoken = { version = "10", features = ["rust_crypto"], optional = true }
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "hostname", "builder"], optional = true }
+reqwest = { version = "0.13.3", features = ["json", "query"], optional = true }
+serde_json = { version = "1.0.149", optional = true }
+sha1 = { version = "0.11", optional = true }
+sha2 = { version = "0.11", optional = true }
+sqlx = { version = "0.9", features = ["runtime-tokio", "chrono"], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-appender = { version = "0.2", optional = true }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "json"], optional = true }
+regex = { version = "1", optional = true }
+redis = { version = "0.28", features = ["tokio-comp"], optional = true }
+cron = { version = "0.15", optional = true }
+calamine = { version = "0.26", optional = true }
+rust_xlsxwriter = { version = "0.82", optional = true }
+csv = { version = "1", optional = true }
+printpdf = { version = "0.9", optional = true, default-features = false }
+allsorts = { version = "0.17", features = ["flate2_rust"], default-features = false, optional = true }
+image = { version = "0.25", optional = true }
+imageproc = { version = "0.25", optional = true }
+ab_glyph = { version = "0.2", optional = true }
+rand = { version = "0.8", optional = true }
+rsa = { version = "0.9", optional = true }
+aes-gcm = { version = "0.10", optional = true }
+pem = { version = "3", optional = true }
+x509-certificate = { version = "0.23", optional = true }
+sha2-v10 = { package = "sha2", version = "0.10", features = ["oid"], optional = true }
+argon2 = { version = "0.5", optional = true }

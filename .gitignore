@@ -1,0 +1,13 @@
+/target
+/Cargo.lock
+/client
+/example/client
+/examples/**/config.toml
+docs/book
+/*.db
+/*.db-shm
+/*.db-wal
+/*.sqlite
+/*.sqlite-shm
+/*.sqlite-wal
+logs

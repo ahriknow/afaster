@@ -1,0 +1,16 @@
+[package]
+name = "tmap-example"
+version = "0.0.1"
+edition = "2024"
+
+[[bin]]
+name = "tmap"
+path = "src/main.rs"
+
+[dependencies]
+afaster = { workspace = true, features = ["tmap"] }
+serde = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }

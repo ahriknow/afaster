@@ -1,0 +1,13 @@
+[package]
+name = "excel-example"
+version = "0.0.1"
+edition = "2024"
+
+[[bin]]
+name = "excel"
+path = "src/main.rs"
+
+[dependencies]
+afaster = { workspace = true, features = ["excel"] }
+tokio = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,37 @@
+[package]
+name = "example"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "blog"
+path = "src/main.rs"
+
+[dependencies]
+afaster = { workspace = true, features = [
+    "db-sqlite",
+    "jwt",
+    "argon2-hash",
+    "rbac",
+    "socket-binary",
+    "socket-ws",
+    "snow",
+    "log",
+    "afast-ws",
+    "afast-http",
+    "afast-ts",
+    "afast-js",
+    "afast-doc",
+    "trace",
+    "afast-code",
+    "trace-sqlite",
+] }
+afast = { workspace = true }
+afastdata = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
+hyper = { workspace = true }
+http-body-util = { workspace = true }

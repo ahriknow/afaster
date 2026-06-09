@@ -1,0 +1,12 @@
+[email]
+default = "main"
+
+[[email.accounts]]
+id     = "main"
+host   = ""
+port   = 465
+user   = ""
+pass   = ""
+from   = ""
+name   = "AFaster"
+secure = true

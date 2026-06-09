@@ -1,0 +1,12 @@
+[package]
+name = "pdf-example"
+version = "0.0.1"
+edition = "2024"
+
+[[bin]]
+name = "pdf"
+path = "src/main.rs"
+
+[dependencies]
+afaster = { workspace = true, features = ["pdf"] }
+tokio = { workspace = true }

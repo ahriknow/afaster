@@ -1,0 +1,12 @@
+[package]
+name = "scheduler-example"
+version = "0.0.1"
+edition = "2024"
+
+[[bin]]
+name = "scheduler"
+path = "src/main.rs"
+
+[dependencies]
+afaster = { workspace = true, features = ["scheduler"] }
+tokio = { workspace = true }

@@ -1,0 +1,4 @@
+[redis]
+url = "redis://127.0.0.1:6380"
+db = 0
+prefix = ""

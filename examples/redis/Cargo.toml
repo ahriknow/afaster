@@ -1,0 +1,14 @@
+[package]
+name = "redis-example"
+version = "0.0.1"
+edition = "2024"
+
+[[bin]]
+name = "redis"
+path = "src/main.rs"
+
+[dependencies]
+afaster = { workspace = true, features = ["redis"] }
+tokio = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true }
