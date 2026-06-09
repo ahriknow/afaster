@@ -172,19 +172,23 @@ impl Cos {
         let method_lower = method.to_lowercase();
         let uri = format!("/{}", key);
 
-        // 构建参数（按 key 排序）
+        // 构建参数（按 key 排序，保留原始大小写）
         let mut params = BTreeMap::new();
         for (k, v) in extra_params {
-            params.insert(k.to_lowercase(), v.to_string());
+            params.insert(k.to_string(), v.to_string());
         }
         let params_str: String = params
             .iter()
             .map(|(k, v)| {
-                format!(
-                    "{}={}",
-                    Self::cos_param_encode(k),
-                    Self::cos_param_encode(v)
-                )
+                if v.is_empty() {
+                    Self::cos_param_encode(k)
+                } else {
+                    format!(
+                        "{}={}",
+                        Self::cos_param_encode(k),
+                        Self::cos_param_encode(v)
+                    )
+                }
             })
             .collect::<Vec<_>>()
             .join("&");
@@ -252,11 +256,15 @@ impl Cos {
             let existing_params: String = extra_params
                 .iter()
                 .map(|(k, v)| {
-                    format!(
-                        "{}={}",
-                        Self::cos_param_encode(k),
-                        Self::cos_param_encode(v)
-                    )
+                    if v.is_empty() {
+                        Self::cos_param_encode(k)
+                    } else {
+                        format!(
+                            "{}={}",
+                            Self::cos_param_encode(k),
+                            Self::cos_param_encode(v)
+                        )
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join("&");
@@ -310,5 +318,152 @@ impl Cos {
             urls.push(self.get_signed_download_url(key).await?);
         }
         Ok(urls)
+    }
+
+    // ──────────────────────────────────────────────────────────
+    //  图片处理 URL
+    //
+    //  腾讯云 COS 图片处理通过在 URL 中附加图片处理参数实现。
+    //  参数格式: ?imageMogr2/resize/w_300/quality/90
+    //
+    //  参考文档: https://cloud.tencent.com/document/product/436/115609
+    // ──────────────────────────────────────────────────────────
+
+    /// 生成带图片处理参数的签名下载 URL
+    ///
+    /// # 参数
+    /// - `key`: 文件 key
+    /// - `params`: 图片处理参数，如 `"imageMogr2/resize/w_300"` 或 `"imageMogr2/thumbnail/!50p"`
+    ///
+    /// # 示例
+    /// ```ignore
+    /// // 缩放到 300px 宽
+    /// let url = cos.get_signed_image_url("photo.jpg", "imageMogr2/resize/w_300").await?;
+    ///
+    /// // 缩放 + 质量
+    /// let url = cos.get_signed_image_url("photo.jpg", "imageMogr2/resize/w_300/quality/90").await?;
+    ///
+    /// // 格式转换
+    /// let url = cos.get_signed_image_url("photo.jpg", "imageMogr2/format/webp").await?;
+    ///
+    /// // 缩略图（百分比）
+    /// let url = cos.get_signed_image_url("photo.jpg", "imageMogr2/thumbnail/!50p").await?;
+    /// ```
+    pub async fn get_signed_image_url(&self, key: &str, params: &str) -> crate::Result<String> {
+        let prefix = self.prefix.trim_matches('/');
+        let full_key = if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{}/{}", prefix, key)
+        };
+        // COS 图片处理参数作为查询参数签名
+        self.build_signed_url("GET", &full_key, &[(params, "")], &[])
+            .await
+    }
+
+    /// 生成带预定义样式的签名下载 URL
+    ///
+    /// 预定义样式在腾讯云 COS 控制台创建，通过样式名引用。
+    ///
+    /// # 参数
+    /// - `key`: 文件 key
+    /// - `style_name`: 样式名，如 `"thumbnail"` 或 `"avatar_s"`
+    ///
+    /// # 示例
+    /// ```ignore
+    /// let url = cos.get_signed_style_url("photo.jpg", "thumbnail").await?;
+    /// ```
+    pub async fn get_signed_style_url(&self, key: &str, style_name: &str) -> crate::Result<String> {
+        let prefix = self.prefix.trim_matches('/');
+        let full_key = if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{}/{}", prefix, key)
+        };
+        let param = format!("style/{}", style_name);
+        self.build_signed_url("GET", &full_key, &[(&param, "")], &[])
+            .await
+    }
+
+    // ──────────────────────────────────────────────────────────
+    //  视频截帧 URL
+    //
+    //  腾讯云 COS 视频截帧通过 `ci-process=snapshot` 参数实现。
+    //
+    //  参考文档: https://cloud.tencent.com/document/product/460/48226
+    // ──────────────────────────────────────────────────────────
+
+    /// 生成视频截帧签名 URL
+    ///
+    /// 从视频中截取指定时间点的帧，返回图片 URL。
+    ///
+    /// # 参数
+    /// - `key`: 视频文件 key
+    /// - `time_sec`: 截取时间点（秒），`0` 表示封面
+    /// - `width`: 输出宽度（像素），`0` 表示自动
+    /// - `height`: 输出高度（像素），`0` 表示自动
+    /// - `format`: 输出格式，`"jpg"` 或 `"png"`
+    ///
+    /// # 示例
+    /// ```ignore
+    /// // 截取视频封面
+    /// let url = cos.get_signed_video_snapshot("video.mp4", 0, 800, 600, "jpg").await?;
+    ///
+    /// // 截取第 17 秒
+    /// let url = cos.get_signed_video_snapshot("video.mp4", 17, 800, 600, "jpg").await?;
+    /// ```
+    pub async fn get_signed_video_snapshot(
+        &self,
+        key: &str,
+        time_sec: u64,
+        width: u32,
+        height: u32,
+        format: &str,
+    ) -> crate::Result<String> {
+        let prefix = self.prefix.trim_matches('/');
+        let full_key = if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{}/{}", prefix, key)
+        };
+
+        let mut params = vec![
+            ("ci-process", "snapshot".to_string()),
+            ("time", time_sec.to_string()),
+            ("format", format.to_string()),
+        ];
+        if width > 0 {
+            params.push(("width", width.to_string()));
+        }
+        if height > 0 {
+            params.push(("height", height.to_string()));
+        }
+
+        let extra_params: Vec<(&str, &str)> =
+            params.iter().map(|(k, v)| (*k, v.as_str())).collect();
+
+        self.build_signed_url("GET", &full_key, &extra_params, &[])
+            .await
+    }
+
+    /// 生成视频封面截帧签名 URL（简化版）
+    ///
+    /// # 参数
+    /// - `key`: 视频文件 key
+    /// - `width`: 输出宽度（像素），`0` 表示自动
+    /// - `height`: 输出高度（像素），`0` 表示自动
+    ///
+    /// # 示例
+    /// ```ignore
+    /// let url = cos.get_signed_video_cover("video.mp4", 800, 0).await?;
+    /// ```
+    pub async fn get_signed_video_cover(
+        &self,
+        key: &str,
+        width: u32,
+        height: u32,
+    ) -> crate::Result<String> {
+        self.get_signed_video_snapshot(key, 0, width, height, "jpg")
+            .await
     }
 }

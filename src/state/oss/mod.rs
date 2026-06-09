@@ -220,6 +220,7 @@ impl Oss {
         method: &str,
         key: &str,
         extra_headers: &[(&str, &str)],
+        process: Option<&str>,
     ) -> crate::Result<String> {
         let key = key.trim_start_matches('/');
         let now = Utc::now();
@@ -266,6 +267,10 @@ impl Oss {
         );
         if !signed_headers.is_empty() {
             query_params.insert("x-oss-signed-headers".to_string(), signed_headers.clone());
+        }
+        // 图片处理参数（签名的一部分）
+        if let Some(proc_str) = process {
+            query_params.insert("x-oss-process".to_string(), proc_str.to_string());
         }
 
         let canonical_query: String = query_params
@@ -329,6 +334,9 @@ x-oss-signature-version=OSS4-HMAC-SHA256",
                 Self::uri_encode(&signed_headers),
             ));
         }
+        if let Some(proc_str) = process {
+            url.push_str(&format!("&x-oss-process={}", Self::uri_encode(proc_str),));
+        }
         url.push_str(&format!("&x-oss-signature={}", signature));
         Ok(url)
     }
@@ -337,7 +345,7 @@ x-oss-signature-version=OSS4-HMAC-SHA256",
     ///
     /// 客户端用 GET 请求该 URL 即可下载文件，无需额外 Header
     pub async fn get_signed_download_url(&self, key: &str) -> crate::Result<String> {
-        self.build_signed_url("GET", key, &[]).await
+        self.build_signed_url("GET", key, &[], None).await
     }
 
     /// 根据存储的 key（如 `abc123.png`）生成访问 URL
@@ -361,7 +369,7 @@ x-oss-signature-version=OSS4-HMAC-SHA256",
         key: &str,
         content_type: &str,
     ) -> crate::Result<String> {
-        self.build_signed_url("PUT", key, &[("content-type", content_type)])
+        self.build_signed_url("PUT", key, &[("content-type", content_type)], None)
             .await
     }
 
@@ -372,6 +380,154 @@ x-oss-signature-version=OSS4-HMAC-SHA256",
             urls.push(self.get_signed_download_url(key).await?);
         }
         Ok(urls)
+    }
+
+    // ──────────────────────────────────────────────────────────
+    //  图片处理 URL
+    //
+    //  阿里云 OSS 图片处理通过在 URL 中附加 `x-oss-process` 参数实现。
+    //  两种模式：
+    //  1. 实时处理参数: `image/resize,w_300/quality,q_90`
+    //  2. 预定义样式名: `style/mystyle`
+    //
+    //  对于私有文件，`x-oss-process` 必须参与签名。
+    // ──────────────────────────────────────────────────────────
+
+    /// 生成带实时图片处理参数的签名下载 URL
+    ///
+    /// # 参数
+    /// - `key`: 文件 key
+    /// - `process`: 图片处理参数，如 `"image/resize,w_300,h_200"` 或 `"image/resize,w_300/quality,q_90"`
+    ///
+    /// # 示例
+    /// ```ignore
+    /// // 缩放到 300px 宽
+    /// let url = oss.get_signed_image_url("photo.jpg", "image/resize,w_300").await?;
+    ///
+    /// // 缩放 + 质量变换（链式）
+    /// let url = oss.get_signed_image_url("photo.jpg", "image/resize,w_300/quality,q_90").await?;
+    ///
+    /// // 格式转换
+    /// let url = oss.get_signed_image_url("photo.jpg", "image/format,webp").await?;
+    /// ```
+    pub async fn get_signed_image_url(&self, key: &str, process: &str) -> crate::Result<String> {
+        let prefix = self.prefix.trim_matches('/');
+        let full_key = if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{}/{}", prefix, key)
+        };
+        self.build_signed_url("GET", &full_key, &[], Some(process))
+            .await
+    }
+
+    /// 生成带预定义样式的签名下载 URL
+    ///
+    /// 预定义样式在阿里云 OSS 控制台创建，通过样式名引用。
+    ///
+    /// # 参数
+    /// - `key`: 文件 key
+    /// - `style_name`: 样式名，如 `"thumbnail"` 或 `"avatar_s"`
+    ///
+    /// # 示例
+    /// ```ignore
+    /// // 使用缩略图样式
+    /// let url = oss.get_signed_style_url("photo.jpg", "thumbnail").await?;
+    ///
+    /// // 使用头像样式
+    /// let url = oss.get_signed_style_url("photo.jpg", "avatar_s").await?;
+    /// ```
+    pub async fn get_signed_style_url(&self, key: &str, style_name: &str) -> crate::Result<String> {
+        let prefix = self.prefix.trim_matches('/');
+        let full_key = if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{}/{}", prefix, key)
+        };
+        let process = format!("style/{}", style_name);
+        self.build_signed_url("GET", &full_key, &[], Some(&process))
+            .await
+    }
+
+    // ──────────────────────────────────────────────────────────
+    //  视频截帧 URL
+    //
+    //  阿里云 OSS 视频截帧通过 `video/snapshot` 参数实现。
+    //  支持截取视频封面（t=0）或指定时间点的帧。
+    //  截帧后返回图片，支持缩放、裁剪等后续处理。
+    //
+    //  参考文档: https://help.aliyun.com/zh/oss/user-guide/video-snapshots
+    // ──────────────────────────────────────────────────────────
+
+    /// 生成视频截帧签名 URL
+    ///
+    /// 从视频中截取指定时间点的帧，返回图片 URL。
+    ///
+    /// # 参数
+    /// - `key`: 视频文件 key
+    /// - `time_ms`: 截取时间点（毫秒），`0` 表示封面
+    /// - `width`: 输出宽度（像素），`0` 表示自动
+    /// - `height`: 输出高度（像素），`0` 表示自动
+    /// - `format`: 输出格式，`"jpg"` 或 `"png"`
+    /// - `fast`: 是否使用 fast 模式（截取最近关键帧）
+    ///
+    /// # 示例
+    /// ```ignore
+    /// // 截取视频封面（第 0 帧），输出 800x600 JPG
+    /// let url = oss.get_signed_video_snapshot("video.mp4", 0, 800, 600, "jpg", false).await?;
+    ///
+    /// // 截取第 17 秒处的帧，fast 模式
+    /// let url = oss.get_signed_video_snapshot("video.mp4", 17000, 800, 600, "jpg", true).await?;
+    /// ```
+    pub async fn get_signed_video_snapshot(
+        &self,
+        key: &str,
+        time_ms: u64,
+        width: u32,
+        height: u32,
+        format: &str,
+        fast: bool,
+    ) -> crate::Result<String> {
+        let prefix = self.prefix.trim_matches('/');
+        let full_key = if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{}/{}", prefix, key)
+        };
+        let mut process = format!("video/snapshot,t_{},f_{}", time_ms, format);
+        if width > 0 {
+            process.push_str(&format!(",w_{}", width));
+        }
+        if height > 0 {
+            process.push_str(&format!(",h_{}", height));
+        }
+        if fast {
+            process.push_str(",m_fast");
+        }
+        self.build_signed_url("GET", &full_key, &[], Some(&process))
+            .await
+    }
+
+    /// 生成视频封面截帧签名 URL（简化版，截取第 0 帧）
+    ///
+    /// # 参数
+    /// - `key`: 视频文件 key
+    /// - `width`: 输出宽度（像素），`0` 表示自动
+    /// - `height`: 输出高度（像素），`0` 表示自动
+    ///
+    /// # 示例
+    /// ```ignore
+    /// // 获取视频封面，800px 宽
+    /// let url = oss.get_signed_video_cover("video.mp4", 800, 0).await?;
+    /// ```
+    pub async fn get_signed_video_cover(
+        &self,
+        key: &str,
+        width: u32,
+        height: u32,
+    ) -> crate::Result<String> {
+        self.get_signed_video_snapshot(key, 0, width, height, "jpg", true)
+            .await
     }
 
     // ──────────────────────────────────────────────────────────
