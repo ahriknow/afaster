@@ -51,10 +51,10 @@ pub struct TracingConfig {
     /// SQLite 数据库文件路径（可选，需要 `trace-sqlite` feature）
     #[cfg(feature = "trace-sqlite")]
     pub db_path: Option<String>,
-    /// HTTP 存储配置（可选，需要 `trace-http` feature）
+    /// HTTP 存储配置（可选，需要 `trace-http` feature，发送端）
     #[cfg(feature = "trace-http")]
     pub http: Option<http::HttpTraceStoreConfig>,
-    /// TCP 存储配置（可选，需要 `trace-tcp` feature）
+    /// TCP 存储配置（可选，需要 `trace-tcp` feature，发送端）
     #[cfg(feature = "trace-tcp")]
     pub tcp: Option<tcp::TcpTraceStoreConfig>,
     /// Web UI 路径

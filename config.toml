@@ -304,7 +304,7 @@ key = "ip"                  # key 提取方式: ip / header / connection / globa
 # ═══════════════════════════════════════════════════════════════
 #  本地链路追踪
 #  Feature: trace (自动启用 log + afast/hook + afast-ordinary-http)
-#  可选 Feature: trace-sqlite / trace-http / trace-tcp
+#  可选 Feature: trace-sqlite / trace-http / trace-tcp / trace-receive-http / trace-receive-tcp
 # ═══════════════════════════════════════════════════════════════
 [tracing]
 service_name = "afaster"                              # 服务名称
@@ -312,15 +312,19 @@ db_path = "tracing.db"                                # SQLite 存储路径（�
 # url = "/tracing"                                    # Web UI 路径，默认 /tracing
 # retention_days = 7                                  # 数据保留天数，默认 7
 
-# HTTP 存储（可选，需要 trace-http feature）
+# HTTP 发送端（可选，需要 trace-http feature，使用 afastdata 二进制协议）
 # [tracing.http]
 # url = "http://localhost:8080"                       # 远程服务地址
-# api_prefix = "/api/tracing"                         # API 路径前缀，默认 /api/tracing
+# path = "/tracing/report"                            # API 路径，默认 /tracing/report
 # token = ""                                          # 认证 Token（可选）
 # timeout = 5                                         # 请求超时（秒），默认 5
 
-# TCP 存储（可选，需要 trace-tcp feature）
+# TCP 发送端（可选，需要 trace-tcp feature，使用 afastdata 二进制协议）
 # [tracing.tcp]
 # addr = "127.0.0.1:9090"                             # 远程服务地址
 # connect_timeout = 5                                 # 连接超时（秒），默认 5
 # reconnect_interval = 3                              # 重连间隔（秒），默认 3
+
+# 接收端：启用 trace-receive-http / trace-receive-tcp feature 后，
+# 通过 afast 框架的 report / report_batch binary handler 自动接收外部项目上报，
+# 无需额外配置。发送方配置 [tracing.http] 或 [tracing.tcp] 指向本项目即可。

@@ -2,17 +2,19 @@
 
 > Feature: `trace`（自动启用 `log` + `afast/hook` + `afast-ordinary-http` + `sse`）
 >
-> 可选 Feature：`trace-sqlite` / `trace-http` / `trace-tcp`
+> 可选 Feature：`trace-sqlite` / `trace-http` / `trace-tcp` / `trace-receive-http` / `trace-receive-tcp`
 
-基于 afast hook 系统实现的本地链路追踪，自动为每个请求创建 Span，提供 Web UI 查询和实时推送。支持多种存储后端。
+基于 afast hook 系统实现的本地链路追踪，自动为每个请求创建 Span，提供 Web UI 查询和实时推送。支持多种存储后端，支持跨项目上报。
 
 ## 存储后端
 
-| Feature | 说明 | 配置 |
-|---------|------|------|
-| `trace-sqlite` | 本地 SQLite 存储（默认） | `[tracing]` `db_path` |
-| `trace-http` | HTTP 远程存储 | `[tracing.http]` |
-| `trace-tcp` | TCP 远程存储（afastdata 序列化） | `[tracing.tcp]` |
+| Feature | 说明 | 方向 | 配置 |
+|---------|------|------|------|
+| `trace-sqlite` | 本地 SQLite 存储（默认） | 本地 | `[tracing]` `db_path` |
+| `trace-http` | HTTP 远程存储（afastdata 二进制协议） | 发送 | `[tracing.http]` |
+| `trace-tcp` | TCP 远程存储（afastdata 序列化） | 发送 | `[tracing.tcp]` |
+| `trace-receive-http` | 启用 HTTP 接收（`afast-http` 传输） | 接收 | 无需额外配置 |
+| `trace-receive-tcp` | 启用 TCP 接收（`afast-tcp` 传输） | 接收 | 无需额外配置 |
 
 ### 优先级
 
@@ -42,9 +44,9 @@ service_name = "afaster"
 
 [tracing.http]
 url = "http://collector:8080"
-api_prefix = "/api/tracing"   # 默认值
-token = "my-secret"           # 可选，Bearer Token
-timeout = 5                   # 可选，请求超时（秒）
+path = "/tracing/report"   # 默认值
+token = "my-secret"        # 可选，Bearer Token
+timeout = 5                 # 可选，请求超时（秒）
 ```
 
 ### TCP
@@ -57,6 +59,46 @@ service_name = "afaster"
 addr = "collector:9090"
 connect_timeout = 5           # 可选，连接超时（秒）
 reconnect_interval = 3        # 可选，重连间隔（秒）
+```
+
+## 跨项目上报
+
+其他 afaster 项目可以将 span 数据上报到本项目。只需在发送方配置 `[tracing.http]` 或 `[tracing.tcp]` 指向本项目的地址，并在本项目启用对应的接收 feature。
+
+| 接收 Feature | 传输协议 | 依赖的 afast 传输 |
+|-------------|---------|------------------|
+| `trace-receive-http` | HTTP binary | `afast-http` |
+| `trace-receive-tcp` | TCP binary | `afast-tcp` |
+
+接收端通过已注册的 `report` / `report_batch` binary handler 接收数据，无需额外配置。发送端和接收端使用相同的 afastdata 二进制协议。
+
+### 示例：A 项目上报到 B 项目
+
+**A 项目（发送方）config.toml：**
+
+```toml
+[tracing]
+service_name = "service-a"
+db_path = "tracing.db"      # 本地也存储一份
+
+[tracing.http]
+url = "http://service-b:8080"
+path = "/tracing/report"
+```
+
+**B 项目（接收方）config.toml：**
+
+```toml
+[tracing]
+service_name = "service-b"
+db_path = "tracing.db"
+```
+
+**B 项目 Cargo.toml：**
+
+```toml
+[dependencies]
+afaster = { version = "0.0.2", features = ["trace-sqlite", "trace-receive-http"] }
 ```
 
 ## 使用

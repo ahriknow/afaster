@@ -1,18 +1,20 @@
 //! TraceStore 的 HTTP 实现
 //!
-//! 将 span 数据通过 HTTP 发送到远程服务。
+//! 将 span 数据通过 HTTP 发送到远程服务，使用 afastdata 二进制协议。
 
 use super::err;
+use super::handler::ReportBatchReq;
 use super::store::*;
+use afastdata::AFastSerialize;
 
 /// HTTP 存储配置
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct HttpTraceStoreConfig {
     /// 远程服务地址，如 "http://localhost:8080"
     pub url: String,
-    /// API 路径前缀，默认 "/api/tracing"
-    #[serde(default = "default_api_prefix")]
-    pub api_prefix: String,
+    /// API 路径，默认 "/tracing/report"
+    #[serde(default = "default_path")]
+    pub path: String,
     /// 认证 Token（可选）
     pub token: Option<String>,
     /// 请求超时（秒），默认 5
@@ -20,8 +22,8 @@ pub struct HttpTraceStoreConfig {
     pub timeout: u64,
 }
 
-fn default_api_prefix() -> String {
-    "/api/tracing".to_string()
+fn default_path() -> String {
+    "/tracing/report".to_string()
 }
 
 fn default_timeout() -> u64 {
@@ -46,51 +48,35 @@ impl HttpTraceStore {
         Ok(Self { client, config })
     }
 
-    fn url(&self, path: &str) -> String {
-        format!("{}{}{}", self.config.url, self.config.api_prefix, path)
+    fn url(&self) -> String {
+        format!(
+            "{}{}",
+            self.config.url.trim_end_matches('/'),
+            self.config.path
+        )
     }
 
-    async fn post_json<T: serde::Serialize>(&self, path: &str, body: &T) -> crate::Result<()> {
-        let mut req = self.client.post(self.url(path)).json(body);
+    async fn post_binary(&self, data: Vec<u8>) -> crate::Result<()> {
+        let mut req = self
+            .client
+            .post(self.url())
+            .header("Content-Type", "application/octet-stream")
+            .body(data);
         if let Some(ref token) = self.config.token {
             req = req.bearer_auth(token);
         }
         let resp = req
             .send()
             .await
-            .map_err(|e| err::http_request_failed(&format!("POST {}: {}", path, e)))?;
+            .map_err(|e| err::http_request_failed(&format!("POST: {}", e)))?;
 
         if !resp.status().is_success() {
             return Err(err::http_request_failed(&format!(
-                "POST {} returned {}",
-                path,
+                "POST returned {}",
                 resp.status()
             )));
         }
         Ok(())
-    }
-
-    async fn get_json<T: serde::de::DeserializeOwned>(&self, path: &str) -> crate::Result<T> {
-        let mut req = self.client.get(self.url(path));
-        if let Some(ref token) = self.config.token {
-            req = req.bearer_auth(token);
-        }
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| err::http_request_failed(&format!("GET {}: {}", path, e)))?;
-
-        if !resp.status().is_success() {
-            return Err(err::http_request_failed(&format!(
-                "GET {} returned {}",
-                path,
-                resp.status()
-            )));
-        }
-
-        resp.json()
-            .await
-            .map_err(|e| err::http_request_failed(&format!("parse response: {}", e)))
     }
 }
 
@@ -99,24 +85,29 @@ impl TraceStore for HttpTraceStore {
         &self,
         span: SpanData,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::Result<()>> + Send + '_>> {
-        Box::pin(async move { self.post_json("/span", &span).await })
+        Box::pin(async move {
+            let req = ReportBatchReq { spans: vec![span] };
+            self.post_binary(req.to_bytes()).await
+        })
     }
 
     fn insert_spans(
         &self,
         spans: Vec<SpanData>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::Result<()>> + Send + '_>> {
-        Box::pin(async move { self.post_json("/spans", &spans).await })
+        Box::pin(async move {
+            let req = ReportBatchReq { spans };
+            self.post_binary(req.to_bytes()).await
+        })
     }
 
     fn get_trace(
         &self,
-        trace_id: &str,
+        _trace_id: &str,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = crate::Result<Vec<SpanData>>> + Send + '_>,
     > {
-        let path = format!("/trace/{}", trace_id);
-        Box::pin(async move { self.get_json(&path).await })
+        Box::pin(async { Ok(vec![]) })
     }
 
     fn list_traces(
