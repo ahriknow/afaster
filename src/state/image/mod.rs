@@ -1,7 +1,7 @@
 //! 图片生成模块
 //!
 //! 基于 `image` + `imageproc` + `ab_glyph` 封装，支持中文文字渲染。
-//! 内嵌思源黑体，Builder 模式，链式调用。
+//! Builder 模式，链式调用。
 //! 支持 PNG / JPEG / WebP / BMP / GIF 等多种输出格式。
 //!
 //! # 快速开始

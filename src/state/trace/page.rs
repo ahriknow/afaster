@@ -68,6 +68,7 @@ header h1 span { color:var(--blue); }
 .stat-card .value { font-size:32px; font-weight:700; }
 .stat-card .value.ok { color:var(--green); }
 .stat-card .value.err { color:var(--red); }
+.stat-card .value small { font-size:14px; opacity:0.6; font-weight:400; margin-left:4px; }
 
 /* Filters */
 .filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; align-items:center; }
@@ -177,12 +178,13 @@ tr.clickable { cursor:pointer; }
     background:rgba(0,0,0,0.06); border-bottom:1px solid var(--border); gap:8px;
 }
 .treemap-label .name { font-weight:600; overflow:hidden; text-overflow:ellipsis; }
-.treemap-label .dur { font-size:12px; opacity:0.7; flex-shrink:0; }
+.treemap-label .dur { font-size:12px; opacity:0.85; flex-shrink:0; color:var(--text); }
+.treemap-label .dur small { opacity:0.65; font-size:10px; margin-left:2px; }
 .treemap-idle {
     display:flex; align-items:center; justify-content:center;
     background:repeating-linear-gradient(135deg, var(--surface2), var(--surface2) 4px, var(--border) 4px, var(--border) 5px);
     border:1px dashed var(--border); border-radius:4px;
-    font-size:11px; color:var(--text3); flex-shrink:0;
+    font-size:11px; color:var(--text2); flex-shrink:0;
 }
 
 /* Span Tree */
@@ -195,8 +197,9 @@ tr.clickable { cursor:pointer; }
 .span-tree-item:last-child { border-bottom:none; }
 .span-tree-item:hover { background:var(--hover); }
 .span-tree-item .st-name { font-weight:500; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.span-tree-item .st-dur { font-family:'SF Mono',Monaco,Consolas,monospace; font-size:12px; color:var(--text2); flex-shrink:0; }
-.span-tree-item .st-time { font-size:12px; color:var(--text3); flex-shrink:0; }
+.span-tree-item .st-dur { font-family:'SF Mono',Monaco,Consolas,monospace; font-size:12px; color:var(--text); flex-shrink:0; }
+.span-tree-item .st-dur small { opacity:0.6; font-size:10px; }
+.span-tree-item .st-time { font-size:12px; color:var(--text2); flex-shrink:0; }
 .span-tree-item .st-badge { flex-shrink:0; }
 
 /* Loading */
@@ -636,14 +639,21 @@ function renderSpanTree(spans, traceId) {
 //  Nested Div Treemap
 // ═══════════════════════════════════════════════════════════
 const CELL_PAD = 4;
-const PX_PER_MS = 100;  // 0.1px per μs
-const PX_ZERO = 60;     // < 1000μs 固定 60px
 
-function spanPx(us) { return us < 1000 ? PX_ZERO : (us / 1000) * PX_PER_MS; }
+// 根据根 span 总时长动态计算比例尺（px per ms）
+// < 20ms: 100px/ms, 20-40ms: 50px/ms, 40-60ms: 33px/ms, ...
+function calcScale(rootDurationUs) {
+    const rootMs = rootDurationUs / 1000;
+    const tier = Math.floor(rootMs / 20);   // 每 20ms 一档
+    return 100 / (tier + 1);                 // 100, 50, 33.3, 25, 20, ...
+}
+
+// < 1ms 的 span 最小宽度：不超过 1ms 对应宽度，保证视觉一致性；下限 20px 保证可见
+function spanPx(us, pxPerMs) { return us < 1000 ? Math.max(20, Math.min(60, pxPerMs)) : (us / 1000) * pxPerMs; }
 
 // 递归计算每个 span 的渲染宽度（从叶子向上）
 // 包含间隙：子级之间的空闲时间也有宽度
-function calcTree(spans, parentId) {
+function calcTree(spans, parentId, pxPerMs) {
     const children = spans.filter(s => (s.parent_span_id || null) === parentId)
         .sort((a, b) => a.start_time - b.start_time);
     if (children.length === 0) return [];
@@ -654,10 +664,10 @@ function calcTree(spans, parentId) {
     for (const span of children) {
         const gap = span.start_time - cursor;
         if (gap > 0) {
-            items.push({ type: 'idle', duration_us: gap, totalW: (gap / 1000) * PX_PER_MS });
+            items.push({ type: 'idle', duration_us: gap, totalW: (gap / 1000) * pxPerMs });
         }
-        const childNodes = calcTree(spans, span.span_id);
-        const selfW = spanPx(span.duration_us);
+        const childNodes = calcTree(spans, span.span_id, pxPerMs);
+        const selfW = spanPx(span.duration_us, pxPerMs);
         if (childNodes.length === 0) {
             items.push({ type: 'span', span, children: childNodes, totalW: selfW });
             cursor = span.start_time + span.duration_us;
@@ -681,9 +691,10 @@ function renderNode(item, traceId) {
     const w = item.totalW;
     const statusCls = s.status?.tag === 'Error' ? 'error' : 'ok';
     const dur = formatDuration(s.duration_us);
+    const durText = formatDurationText(s.duration_us);
     const name = s.handler_name || '(unknown)';
     const desc = s.handler_desc || '';
-    const dataAttr = `data-span-id="${s.span_id}" data-name="${esc(name)}" data-desc="${esc(desc)}" data-dur="${dur}" data-status="${statusCls}"`;
+    const dataAttr = `data-span-id="${s.span_id}" data-name="${esc(name)}" data-desc="${esc(desc)}" data-dur="${esc(durText)}" data-status="${statusCls}"`;
 
     if (item.children.length === 0) {
         return `<div class="treemap-cell ${statusCls}" ${dataAttr} style="width:${w}px;flex:0 0 ${w}px" onclick="event.stopPropagation();showDetail('${traceId}','${s.span_id}')">
@@ -701,8 +712,9 @@ function renderNode(item, traceId) {
 
 function renderTreemapDOM(containerId, spans, traceId, root) {
     const container = document.getElementById(containerId);
-    const childItems = calcTree(spans, root.span_id);
-    const rootSelfW = spanPx(root.duration_us);
+    const pxPerMs = calcScale(root.duration_us);
+    const childItems = calcTree(spans, root.span_id, pxPerMs);
+    const rootSelfW = spanPx(root.duration_us, pxPerMs);
     const rootChildrenW = childItems.length > 0
         ? childItems.reduce((s, c) => s + c.totalW, 0)
           + (childItems.length - 1) * CELL_PAD
@@ -712,16 +724,19 @@ function renderTreemapDOM(containerId, spans, traceId, root) {
     const rootStatus = root.status?.tag === 'Error' ? 'error' : 'root';
     const rootName = root.handler_name || '(unknown)';
     const rootDur = formatDuration(root.duration_us);
+    const rootDurText = formatDurationText(root.duration_us);
+    const rootDesc = root.handler_desc || '';
+    const rootDataAttr = `data-span-id="${root.span_id}" data-name="${esc(rootName)}" data-desc="${esc(rootDesc)}" data-dur="${esc(rootDurText)}" data-status="${rootStatus}"`;
 
     if (childItems.length === 0) {
-        container.innerHTML = `<div class="treemap-row"><div class="treemap-cell ${rootStatus}" style="width:${rootW}px;flex:0 0 ${rootW}px">
+        container.innerHTML = `<div class="treemap-row"><div class="treemap-cell ${rootStatus}" ${rootDataAttr} style="width:${rootW}px;flex:0 0 ${rootW}px">
             <div class="treemap-label"><span class="name">${esc(rootName)}</span><span class="dur">${rootDur}</span></div>
         </div></div>`;
         return;
     }
 
     const childHtml = childItems.map(c => renderNode(c, traceId)).join('');
-    container.innerHTML = `<div class="treemap-row"><div class="treemap-cell ${rootStatus}" style="width:${rootW}px;flex:0 0 ${rootW}px">
+    container.innerHTML = `<div class="treemap-row"><div class="treemap-cell ${rootStatus}" ${rootDataAttr} style="width:${rootW}px;flex:0 0 ${rootW}px">
         <div class="treemap-label"><span class="name">${esc(rootName)}</span><span class="dur">${rootDur}</span></div>
         <div class="treemap-row" style="padding:${CELL_PAD}px">${childHtml}</div>
     </div></div>`;
@@ -803,9 +818,10 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 // ═══════════════════════════════════════════════════════════
 //  Utils
 // ═══════════════════════════════════════════════════════════
-function formatDuration(us) { if (us === 0) return '0μs'; if (us < 1000) return us + 'μs'; if (us < 1000000) return (us/1000).toFixed(1) + 'ms'; if (us < 60000000) return (us/1000000).toFixed(2) + 's'; return (us/60000000).toFixed(1) + 'min'; }
-function formatTime(ts) { const d = new Date(ts); const pad = n => String(n).padStart(2,'0'); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
-function formatDateTime(ts) { const d = new Date(ts); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}年${pad(d.getMonth()+1)}月${pad(d.getDate())}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+function formatDuration(us) { if (us === 0) return '0μs'; if (us < 1000) return us + 'μs'; if (us < 1000000) return (us/1000).toFixed(1) + 'ms <small>(' + us.toLocaleString() + 'μs)</small>'; if (us < 60000000) return (us/1000000).toFixed(2) + 's <small>(' + us.toLocaleString() + 'μs)</small>'; return (us/60000000).toFixed(1) + 'min <small>(' + us.toLocaleString() + 'μs)</small>'; }
+function formatDurationText(us) { if (us === 0) return '0μs'; if (us < 1000) return us + 'μs'; if (us < 1000000) return (us/1000).toFixed(1) + 'ms (' + us.toLocaleString() + 'μs)'; if (us < 60000000) return (us/1000000).toFixed(2) + 's (' + us.toLocaleString() + 'μs)'; return (us/60000000).toFixed(1) + 'min (' + us.toLocaleString() + 'μs)'; }
+function formatTime(ts) { const d = new Date(ts / 1000); const pad = n => String(n).padStart(2,'0'); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+function formatDateTime(ts) { const d = new Date(ts / 1000); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}年${pad(d.getMonth()+1)}月${pad(d.getDate())}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
 function esc(s) { if (!s) return ''; const el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
 
 // ═══════════════════════════════════════════════════════════

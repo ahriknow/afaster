@@ -657,8 +657,8 @@ pub async fn init_tracing_with_store(
             interval.tick().await;
             loop {
                 interval.tick().await;
-                let cutoff =
-                    chrono::Utc::now().timestamp_micros() - (retention_days as i64 * 86400 * 1000);
+                let cutoff = chrono::Utc::now().timestamp_micros()
+                    - (retention_days as i64 * 86400 * 1_000_000);
                 match store_cleanup.cleanup(cutoff).await {
                     Ok(count) if count > 0 => {
                         #[cfg(feature = "log")]

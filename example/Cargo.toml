@@ -21,6 +21,8 @@ afaster = { workspace = true, features = [
     "afast-http",
     "afast-ts",
     "afast-js",
+    "afast-kt",
+    "afast-rs",
     "afast-doc",
     "trace",
     "afast-code",

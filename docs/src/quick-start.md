@@ -37,7 +37,7 @@ async fn main() {
 
 ## Feature 列表
 
-所有功能通过 Cargo feature 控制，按需启用。详见 [config.toml](https://github.com/your-repo/afaster/blob/master/config.toml)。
+所有功能通过 Cargo feature 控制，按需启用。详见 [config.toml](https://github.com/ahriknow/afaster/blob/develop/config.toml)。
 
 ### 认证与安全
 
@@ -84,7 +84,7 @@ async fn main() {
 | `file` | 本地文件服务（上传/下载/预览） |
 | `image` | 图片生成（PNG/JPEG/WebP） |
 | `excel` | Excel / CSV 导入导出 |
-| `pdf` | PDF 生成（内嵌思源黑体） |
+| `pdf` | PDF 生成 |
 
 ### 支付
 
@@ -138,4 +138,4 @@ async fn main() {
 | `clock` | 时钟工具 |
 | `regex-util` | 正则工具（常用验证 + 通用匹配） |
 | `log` | 日志（tracing） |
-| `tracing-otlp` | OpenTelemetry 链路追踪（OTLP 导出） |
+| `tracing` | 链路追踪 |
