@@ -148,11 +148,14 @@ impl Oss {
             .join("/")
     }
 
-    /// 生成不重复的 nonce
+    /// 生成不重复的 nonce（时间戳 + 原子计数器，避免高并发碰撞）
     fn generate_nonce() -> String {
+        use std::sync::atomic::{AtomicU32, Ordering};
         use std::time::{SystemTime, UNIX_EPOCH};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
         let d = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        format!("{}{:09}", d.as_secs(), d.subsec_nanos())
+        let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+        format!("{}{:09}{:04}", d.as_secs(), d.subsec_nanos(), c % 10000)
     }
 
     // ──────────────────────────────────────────────────────────

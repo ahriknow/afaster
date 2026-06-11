@@ -18,7 +18,7 @@ Feature: `excel` | 依赖: `calamine`, `rust_xlsxwriter`, `csv`
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.1", features = ["excel"] }
+afaster = { version = "0.0.2", features = ["excel"] }
 ```
 
 ## 读取 API

@@ -1,6 +1,6 @@
 # 数据库
 
-Feature: `db-postgres` / `db-sqlite` / `db-mysql`（三者互斥，只能启用一个）
+Feature: `db-postgres` / `db-sqlite` / `db-mysql`（可同时启用多个）
 
 ## 配置
 
@@ -32,15 +32,18 @@ name = "afaster"
 
 | 方法 | 参数 | 返回 | 说明 |
 |------|------|------|------|
-| `connect_postgres` | `config: &PostgresConfig` | `Result<Database>` | 建立 PostgreSQL 连接池 |
-| `connect_sqlite` | `config: &SqliteConfig` | `Result<Database>` | 建立 SQLite 连接池 |
-| `connect_mysql` | `config: &MysqlConfig` | `Result<Database>` | 建立 MySQL 连接池 |
+| `pg()` | - | `&PgPool` | 获取 PostgreSQL 连接池 |
+| `sqlite()` | - | `&SqlitePool` | 获取 SQLite 连接池 |
+| `mysql()` | - | `&MySqlPool` | 获取 MySQL 连接池 |
+| `pool()` | - | `&PgPool` / `&SqlitePool` / `&MySqlPool` | 获取默认连接池（仅启用单个数据库时可用） |
 
 ### Database 字段
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `pool` | `PgPool` / `SqlitePool` / `MySqlPool` | sqlx 连接池，按 feature 决定类型 |
+| 字段 | 类型 | Feature | 说明 |
+|------|------|---------|------|
+| `pg` | `PgPool` | `db-postgres` | PostgreSQL 连接池 |
+| `sqlite` | `SqlitePool` | `db-sqlite` | SQLite 连接池 |
+| `mysql` | `MySqlPool` | `db-mysql` | MySQL 连接池 |
 
 ## 错误码
 
@@ -53,12 +56,13 @@ name = "afaster"
 
 ```rust
 // 数据库已通过 AppState 自动初始化
-// 在 handler 中通过 state.db.pool 使用 sqlx 查询
+// 单数据库时可通过 state.db.pool() 获取连接池
+// 多数据库时使用 state.db.pg() / state.db.sqlite() / state.db.mysql()
 
 #[afast::post("/users")]
 async fn get_user(state: &AppState, body: UserId) -> Result<User> {
     let user = sqlx::query_as!(User, "SELECT * FROM users WHERE id = $1", body.id)
-        .fetch_one(&state.db.pool)
+        .fetch_one(state.db.pool())
         .await?;
     Ok(user)
 }

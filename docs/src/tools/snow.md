@@ -28,17 +28,17 @@ datacenter_id = 1      # 数据中心 ID (0~31)
 | 方法 | 参数 | 返回 | 说明 |
 |------|------|------|------|
 | `from_config` | `config: &SnowConfig` | `Snowflake` | 从配置创建实例 |
-| `next_id` | - | `i64` | 生成下一个唯一 ID |
-| `next_id_str` | - | `String` | 生成下一个唯一 ID（字符串） |
-| `next_id_prefix` | `prefix: &str` | `String` | 生成带前缀的唯一 ID |
+| `next_id` | - | `i64` | 生成下一个唯一 ID（async） |
+| `next_id_str` | - | `String` | 生成下一个唯一 ID（async，字符串） |
+| `next_id_prefix` | `prefix: &str` | `String` | 生成带前缀的唯一 ID（async） |
 
 ## 使用示例
 
 ```rust
 // 通过 AppState 访问（已从 config 自动初始化）
-let id = state.snow.next_id();
-let id_str = state.snow.next_id_str();
-let order_no = state.snow.next_id_prefix("ORD");
+let id = state.snow.next_id().await;
+let id_str = state.snow.next_id_str().await;
+let order_no = state.snow.next_id_prefix("ORD").await;
 ```
 
 ## ID 结构

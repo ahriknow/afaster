@@ -250,7 +250,9 @@ struct ConfigFile {
 
 impl AppState {
     pub async fn new(path: String) -> crate::Result<Self> {
-        let content = std::fs::read_to_string(path).expect("Failed to read config.toml");
+        let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+            crate::Error::custom(50001, format!("Failed to read config '{}': {}", path, e))
+        })?;
 
         #[allow(unused_mut)]
         #[cfg(any(
@@ -277,9 +279,14 @@ impl AppState {
             feature = "redis",
             feature = "valkey",
             feature = "wx-official",
-            feature = "push"
+            feature = "push",
+            feature = "db-postgres",
+            feature = "db-sqlite",
+            feature = "db-mysql"
         ))]
-        let mut config: ConfigFile = toml::from_str(&content).expect("Failed to parse config.toml");
+        let mut config: ConfigFile = toml::from_str(&content).map_err(|e| {
+            crate::Error::custom(50001, format!("Failed to parse config.toml: {}", e))
+        })?;
 
         #[cfg(not(any(
             feature = "wx-login-mini",
@@ -305,9 +312,14 @@ impl AppState {
             feature = "redis",
             feature = "valkey",
             feature = "wx-official",
-            feature = "push"
+            feature = "push",
+            feature = "db-postgres",
+            feature = "db-sqlite",
+            feature = "db-mysql"
         )))]
-        let config: ConfigFile = toml::from_str(&content).expect("Failed to parse config.toml");
+        let config: ConfigFile = toml::from_str(&content).map_err(|e| {
+            crate::Error::custom(50001, format!("Failed to parse config.toml: {}", e))
+        })?;
 
         // 初始化 reqwest clients
         #[cfg(any(
@@ -350,7 +362,7 @@ impl AppState {
             feature = "wx-pay-js"
         ))]
         {
-            config.wx_pay.init().expect("WxPay init failed");
+            config.wx_pay.init()?;
         }
         #[cfg(feature = "sms-ali")]
         {
@@ -370,7 +382,7 @@ impl AppState {
         }
         #[cfg(feature = "ali-pay-web")]
         {
-            config.ali_pay.init().expect("AliPay init failed");
+            config.ali_pay.init()?;
         }
 
         // 初始化 Redis/Valkey
@@ -381,14 +393,16 @@ impl AppState {
         let valkey_client = redis::Redis::connect(&config.valkey).await?;
 
         // 初始化数据库连接池
-        #[cfg(feature = "db-postgres")]
-        let db = database::Database::connect_postgres(&config.postgres).await?;
-
-        #[cfg(feature = "db-sqlite")]
-        let db = database::Database::connect_sqlite(&config.sqlite).await?;
-
-        #[cfg(feature = "db-mysql")]
-        let db = database::Database::connect_mysql(&config.mysql).await?;
+        #[cfg(any(feature = "db-postgres", feature = "db-sqlite", feature = "db-mysql"))]
+        let db = database::Database::connect(
+            #[cfg(feature = "db-postgres")]
+            &config.postgres,
+            #[cfg(feature = "db-sqlite")]
+            &config.sqlite,
+            #[cfg(feature = "db-mysql")]
+            &config.mysql,
+        )
+        .await?;
 
         let state = AppState {
             backend: config.backend,

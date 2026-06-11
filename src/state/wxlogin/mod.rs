@@ -7,9 +7,6 @@ mod callback;
 #[cfg(feature = "wx-login-web")]
 pub use callback::{WxWebLoginCallbackFn, callback as wx_web_login_callback_handler};
 
-#[cfg(any(feature = "wx-login-mini", feature = "wx-login-app"))]
-use reqwest::Client;
-
 use serde::Deserialize;
 
 #[cfg(feature = "wx-login-web")]
@@ -99,7 +96,8 @@ impl WxLogin {
             .append_pair("js_code", code)
             .append_pair("grant_type", "authorization_code");
 
-        let response = Client::new()
+        let response = self
+            .client
             .get(url)
             .send()
             .await
@@ -160,7 +158,8 @@ impl WxLogin {
             .append_pair("code", code)
             .append_pair("grant_type", "authorization_code");
 
-        let response = Client::new()
+        let response = self
+            .client
             .get(url)
             .send()
             .await

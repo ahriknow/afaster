@@ -9,7 +9,8 @@ struct HealthResponse {
 
 #[handler(desc("Health check"), no_trace)]
 async fn health() -> afast::Result<HealthResponse> {
-    println!("Health check called");
+    #[cfg(feature = "log")]
+    tracing::info!("Health check called");
     Ok(HealthResponse {
         status: "ok".into(),
         version: "0.0.1".into(),

@@ -48,62 +48,126 @@ pub struct MysqlConfig {
 
 /// 数据库连接池
 ///
-/// 根据启用的 feature 自动选择 PostgreSQL / SQLite / MySQL。
-/// 三种数据库互斥，同时只能启用一个。
+/// 支持同时启用多种数据库。每种数据库通过独立字段持有连接池，
+/// 可通过 `pg()` / `sqlite()` / `mysql()` 方法获取对应池引用。
 #[derive(Clone)]
 pub struct Database {
     #[cfg(feature = "db-postgres")]
-    pub pool: PgPool,
+    pub pg: PgPool,
     #[cfg(feature = "db-sqlite")]
-    pub pool: SqlitePool,
+    pub sqlite: SqlitePool,
     #[cfg(feature = "db-mysql")]
-    pub pool: MySqlPool,
+    pub mysql: MySqlPool,
 }
 
 impl Database {
-    /// 从配置建立数据库连接
+    /// 获取 PostgreSQL 连接池引用
     #[cfg(feature = "db-postgres")]
-    pub async fn connect_postgres(config: &PostgresConfig) -> crate::Result<Self> {
+    pub fn pg(&self) -> &PgPool {
+        &self.pg
+    }
+
+    /// 获取 SQLite 连接池引用
+    #[cfg(feature = "db-sqlite")]
+    pub fn sqlite(&self) -> &SqlitePool {
+        &self.sqlite
+    }
+
+    /// 获取 MySQL 连接池引用
+    #[cfg(feature = "db-mysql")]
+    pub fn mysql(&self) -> &MySqlPool {
+        &self.mysql
+    }
+
+    /// 获取默认连接池引用（仅启用单个数据库时可用）
+    ///
+    /// - 仅启用 `db-postgres` → 返回 `&PgPool`
+    /// - 仅启用 `db-sqlite` → 返回 `&SqlitePool`
+    /// - 仅启用 `db-mysql` → 返回 `&MySqlPool`
+    /// - 启用多个 → 编译错误，请使用 `pg()` / `sqlite()` / `mysql()`
+    #[cfg(feature = "db-postgres")]
+    #[cfg(not(any(feature = "db-sqlite", feature = "db-mysql")))]
+    pub fn pool(&self) -> &PgPool {
+        &self.pg
+    }
+
+    #[cfg(feature = "db-sqlite")]
+    #[cfg(not(any(feature = "db-postgres", feature = "db-mysql")))]
+    pub fn pool(&self) -> &SqlitePool {
+        &self.sqlite
+    }
+
+    #[cfg(feature = "db-mysql")]
+    #[cfg(not(any(feature = "db-postgres", feature = "db-sqlite")))]
+    pub fn pool(&self) -> &MySqlPool {
+        &self.mysql
+    }
+
+    /// 建立数据库连接（根据启用的 feature 连接所有配置的数据库）
+    pub async fn connect(
+        #[cfg(feature = "db-postgres")] postgres: &PostgresConfig,
+        #[cfg(feature = "db-sqlite")] sqlite: &SqliteConfig,
+        #[cfg(feature = "db-mysql")] mysql: &MysqlConfig,
+    ) -> crate::Result<Self> {
+        #[cfg(feature = "db-postgres")]
+        let pg = Self::connect_postgres(postgres).await?;
+
+        #[cfg(feature = "db-sqlite")]
+        let sqlite = Self::connect_sqlite(sqlite).await?;
+
+        #[cfg(feature = "db-mysql")]
+        let mysql = Self::connect_mysql(mysql).await?;
+
+        Ok(Self {
+            #[cfg(feature = "db-postgres")]
+            pg,
+            #[cfg(feature = "db-sqlite")]
+            sqlite,
+            #[cfg(feature = "db-mysql")]
+            mysql,
+        })
+    }
+
+    /// 建立 PostgreSQL 连接池
+    #[cfg(feature = "db-postgres")]
+    async fn connect_postgres(config: &PostgresConfig) -> crate::Result<PgPool> {
         let url = format!(
             "postgres://{}:{}@{}:{}/{}",
             config.user, config.pass, config.host, config.port, config.name
         );
-        let pool = PgPool::connect(&url).await.map_err(|e| {
+        PgPool::connect(&url).await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50901, msg = "Database connection failed" }, "PostgreSQL: {}", e);
+            tracing::error!({ code = 50901, msg = "Database connection failed" }, "PostgreSQL: {}", _e);
             connect_failed("PostgreSQL")
-        })?;
-        Ok(Self { pool })
+        })
     }
 
-    /// 从配置建立数据库连接
+    /// 建立 SQLite 连接池
     #[cfg(feature = "db-sqlite")]
-    pub async fn connect_sqlite(config: &SqliteConfig) -> crate::Result<Self> {
+    async fn connect_sqlite(config: &SqliteConfig) -> crate::Result<SqlitePool> {
         let url = if config.path.is_empty() {
             "sqlite::memory:".to_string()
         } else {
             format!("sqlite:{}?mode=rwc", config.path)
         };
-        let pool = SqlitePool::connect(&url).await.map_err(|e| {
+        SqlitePool::connect(&url).await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50901, msg = "Database connection failed" }, "SQLite: {}", e);
+            tracing::error!({ code = 50901, msg = "Database connection failed" }, "SQLite: {}", _e);
             connect_failed("SQLite")
-        })?;
-        Ok(Self { pool })
+        })
     }
 
-    /// 从配置建立数据库连接
+    /// 建立 MySQL 连接池
     #[cfg(feature = "db-mysql")]
-    pub async fn connect_mysql(config: &MysqlConfig) -> crate::Result<Self> {
+    async fn connect_mysql(config: &MysqlConfig) -> crate::Result<MySqlPool> {
         let url = format!(
             "mysql://{}:{}@{}:{}/{}",
             config.user, config.pass, config.host, config.port, config.name
         );
-        let pool = MySqlPool::connect(&url).await.map_err(|e| {
+        MySqlPool::connect(&url).await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50901, msg = "Database connection failed" }, "MySQL: {}", e);
+            tracing::error!({ code = 50901, msg = "Database connection failed" }, "MySQL: {}", _e);
             connect_failed("MySQL")
-        })?;
-        Ok(Self { pool })
+        })
     }
 }

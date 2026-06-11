@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 
 fn default_epoch() -> i64 {
     0 // 0 表示使用当前时间
@@ -33,8 +33,12 @@ pub struct Snowflake {
     epoch: i64,
     worker_id: i64,
     datacenter_id: i64,
-    sequence: Arc<AtomicI64>,
-    last_timestamp: Arc<AtomicI64>,
+    inner: Arc<Mutex<SnowflakeInner>>,
+}
+
+struct SnowflakeInner {
+    sequence: i64,
+    last_timestamp: i64,
 }
 
 impl Snowflake {
@@ -62,35 +66,36 @@ impl Snowflake {
             epoch,
             worker_id: config.worker_id,
             datacenter_id: config.datacenter_id,
-            sequence: Arc::new(AtomicI64::new(0)),
-            last_timestamp: Arc::new(AtomicI64::new(-1)),
+            inner: Arc::new(Mutex::new(SnowflakeInner {
+                sequence: 0,
+                last_timestamp: -1,
+            })),
         }
     }
 
-    pub fn next_id(&self) -> i64 {
+    pub async fn next_id(&self) -> i64 {
+        let mut inner = self.inner.lock().await;
         let mut timestamp = Self::current_time_millis();
 
-        let last = self.last_timestamp.load(Ordering::SeqCst);
-
-        if timestamp < last {
+        if timestamp < inner.last_timestamp {
             panic!("Clock moved backwards");
         }
 
-        let sequence = if timestamp == last {
-            let seq = self.sequence.fetch_add(1, Ordering::SeqCst) + 1;
-            if seq > 4095 {
-                timestamp = self.wait_next_millis(last);
-                self.sequence.store(0, Ordering::SeqCst);
+        let sequence = if timestamp == inner.last_timestamp {
+            inner.sequence += 1;
+            if inner.sequence > 4095 {
+                timestamp = Self::wait_next_millis(inner.last_timestamp);
+                inner.sequence = 0;
                 0
             } else {
-                seq
+                inner.sequence
             }
         } else {
-            self.sequence.store(0, Ordering::SeqCst);
+            inner.sequence = 0;
             0
         };
 
-        self.last_timestamp.store(timestamp, Ordering::SeqCst);
+        inner.last_timestamp = timestamp;
 
         ((timestamp - self.epoch) << 22)
             | (self.datacenter_id << 17)
@@ -98,17 +103,18 @@ impl Snowflake {
             | sequence
     }
 
-    pub fn next_id_str(&self) -> String {
-        self.next_id().to_string()
+    pub async fn next_id_str(&self) -> String {
+        self.next_id().await.to_string()
     }
 
-    pub fn next_id_prefix(&self, prefix: &str) -> String {
-        format!("{}{}", prefix, self.next_id())
+    pub async fn next_id_prefix(&self, prefix: &str) -> String {
+        format!("{}{}", prefix, self.next_id().await)
     }
 
-    fn wait_next_millis(&self, last: i64) -> i64 {
+    fn wait_next_millis(last: i64) -> i64 {
         let mut ts = Self::current_time_millis();
         while ts <= last {
+            std::thread::yield_now();
             ts = Self::current_time_millis();
         }
         ts

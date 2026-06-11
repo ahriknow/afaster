@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.1", features = ["jwt", "log", "redis"] }
+afaster = { version = "0.0.2", features = ["jwt", "log", "redis"] }
 ```
 
 ## 配置
@@ -109,7 +109,7 @@ async fn main() {
 | `valkey` | Valkey 客户端（与 Redis 共享实现） |
 | `memkv` | 内存 KV 数据库（String/Hash/List/Set/ZSet） |
 
-> **注意**：`db-postgres`、`db-sqlite`、`db-mysql` 三者互斥，只能选一个。
+> **提示**：`db-postgres`、`db-sqlite`、`db-mysql` 可同时启用。单数据库时可用 `state.db.pool()`，多数据库时用 `state.db.pg()` / `state.db.sqlite()` / `state.db.mysql()`。
 
 ### 消息通知
 

@@ -16,7 +16,7 @@ async fn me(
         .token
         .get_id(&auth.token)
         .map_err(|_| afaster::Error::custom(40101, "无效的令牌"))?;
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     let u: (i64, String, String, String, String, String, i32) = {
         let _s = state.tracing.span_with(&trace, "query_user", "查询用户");
@@ -83,7 +83,7 @@ async fn create_post(
         }
     }
 
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
     let slug = req
         .title
         .chars()
@@ -181,7 +181,7 @@ async fn my_posts(
         .token
         .get_id(&auth.token)
         .map_err(|_| afaster::Error::custom(40101, "无效的令牌"))?;
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
     let page = req.page.max(1);
     let ps = 20i32;
     let offset = (page - 1) * ps;
@@ -250,7 +250,7 @@ async fn delete_post(
         .token
         .get_id(&auth.token)
         .map_err(|_| afaster::Error::custom(40101, "无效的令牌"))?;
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     {
         let _s = state.tracing.span_with(&trace, "check_owner", "检查权限");
@@ -313,7 +313,7 @@ async fn create_comment(
         }
     }
 
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     {
         let _s = state.tracing.span_with(&trace, "check_post", "检查文章");
@@ -364,7 +364,7 @@ async fn like_post(
         .token
         .get_id(&auth.token)
         .map_err(|_| afaster::Error::custom(40101, "无效的令牌"))?;
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     let liked: (i64,) = {
         let _s = state.tracing.span_with(&trace, "check_liked", "检查点赞");

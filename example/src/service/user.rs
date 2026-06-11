@@ -12,7 +12,7 @@ async fn register(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<RegisterReq>,
 ) -> afast::Result<ApiResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     let exists: (i64,) = {
         let _s = state
@@ -77,7 +77,7 @@ async fn login(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<LoginReq>,
 ) -> afast::Result<LoginResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     let user: (i64, String, String, String, String, String, String, i32) = {
         let _s = state.tracing.span_with(&trace, "db_query_user", "查询用户");
@@ -172,7 +172,7 @@ async fn list_posts(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<ListPostsReq>,
 ) -> afast::Result<PostListResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
     let page = req.page.max(1);
     let page_size = req.page_size.clamp(1, 100);
     let offset = (page - 1) * page_size;
@@ -238,7 +238,7 @@ async fn get_post(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<PostIdReq>,
 ) -> afast::Result<PostDetailResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     {
         let _s = state
@@ -323,7 +323,7 @@ async fn list_categories(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<CategoryListResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
     let rows: Vec<(i64, String, String, String, i32)> = {
         let _s = state
             .tracing
@@ -352,7 +352,7 @@ async fn list_tags(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<TagListResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
     let rows: Vec<(i64, String, String)> = {
         let _s = state.tracing.span_with(&trace, "query_tags", "查询标签");
         sqlx::query_as("SELECT id, name, slug FROM tags ORDER BY id ASC")
@@ -381,7 +381,7 @@ async fn dashboard(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<DashboardReq>,
 ) -> afast::Result<DashboardResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
     let trace_id = &trace.trace_id;
     let root_span_id = &trace.span_id;
     let t0 = now_ms();
@@ -638,7 +638,7 @@ async fn generate_report(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<DataReportResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     // ── Level 1: 验证输入 ──
     {
@@ -851,7 +851,7 @@ async fn simulate_payment(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<PostIdReq>,
 ) -> afast::Result<ApiResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     // ✅ 查询订单
     let post = {
@@ -888,7 +888,7 @@ async fn batch_query(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<ApiResp> {
-    let pool = &state.db.pool;
+    let pool = state.db.pool();
 
     // ✅ 查询用户
     {

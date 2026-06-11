@@ -112,7 +112,7 @@ async fn main() {
 | `clock` | 时钟工具 |
 | `regex-util` | 正则工具 |
 
-> **注意**：`db-postgres`、`db-sqlite`、`db-mysql` 三者互斥，只能选一个。
+> **提示**：`db-postgres`、`db-sqlite`、`db-mysql` 可同时启用。单数据库时可用 `state.db.pool()`，多数据库时用 `state.db.pg()` / `state.db.sqlite()` / `state.db.mysql()`。
 
 ## 配置
 
