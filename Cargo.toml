@@ -21,7 +21,7 @@ repository = "https://github.com/ahriknow/afaster"
 
 [workspace.dependencies]
 afaster = { path = ".", default-features = false }
-afast = { version = "0.1.15" }
+afast = { version = "0.1.17" }
 afastdata = { version = "0.0.10" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1" }
@@ -91,6 +91,8 @@ valkey = ["dep:redis"]
 scheduler = ["dep:cron"]
 memkv = []
 rate-limit = ["afast/rate-limit"]
+serve = ["afast/ordinary-http", "dep:mime_guess", "dep:hyper", "dep:http-body-util"]
+serve-embed = ["serve", "dep:include_dir"]
 excel = ["dep:calamine", "dep:rust_xlsxwriter", "dep:serde_json", "dep:csv"]
 pdf = ["dep:printpdf", "dep:allsorts"]
 image = ["dep:image", "dep:imageproc", "dep:ab_glyph"]
@@ -153,3 +155,5 @@ pem = { version = "3", optional = true }
 x509-certificate = { version = "0.23", optional = true }
 sha2-v10 = { package = "sha2", version = "0.10", features = ["oid"], optional = true }
 argon2 = { version = "0.5", optional = true }
+mime_guess = { version = "2", optional = true }
+include_dir = { version = "0.7", optional = true, features = ["glob"] }

@@ -328,3 +328,11 @@ db_path = "tracing.db"                                # SQLite 存储路径（�
 # 接收端：启用 trace-receive-http / trace-receive-tcp feature 后，
 # 通过 afast 框架的 report / report_batch binary handler 自动接收外部项目上报，
 # 无需额外配置。发送方配置 [tracing.http] 或 [tracing.tcp] 指向本项目即可。
+
+# ═══════════════════════════════════════════════════════════════
+#  静态文件服务
+#  Feature: serve / serve-embed
+# ═══════════════════════════════════════════════════════════════
+[serve]
+# prefix = "/"           # URL 前缀, 默认 "/"（即根路径）
+spa = true               # SPA 模式: 未找到文件时返回 index.html, 默认 false

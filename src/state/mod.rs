@@ -83,6 +83,9 @@ pub mod scheduler;
 #[cfg(feature = "rate-limit")]
 pub mod rate_limit;
 
+#[cfg(feature = "serve")]
+pub mod serve;
+
 #[cfg(feature = "excel")]
 pub mod excel;
 
@@ -178,6 +181,8 @@ pub struct AppState {
     pub scheduler: scheduler::Scheduler,
     #[cfg(feature = "rate-limit")]
     pub rate_limit_config: rate_limit::RateLimitModuleConfig,
+    #[cfg(feature = "serve")]
+    pub serve: Option<serve::Serve>,
     #[cfg(feature = "redis")]
     pub redis: redis::Redis,
     #[cfg(all(feature = "valkey", not(feature = "redis")))]
@@ -240,6 +245,8 @@ struct ConfigFile {
     tracing: trace::TracingConfig,
     #[cfg(feature = "rate-limit")]
     rate_limit: rate_limit::RateLimitModuleConfig,
+    #[cfg(feature = "serve")]
+    serve: serve::ServeConfig,
     #[cfg(feature = "push")]
     push: push::PushManager,
     #[cfg(feature = "redis")]
@@ -276,6 +283,7 @@ impl AppState {
             feature = "ali-pay-web",
             feature = "trace",
             feature = "rate-limit",
+            feature = "serve",
             feature = "redis",
             feature = "valkey",
             feature = "wx-official",
@@ -309,6 +317,7 @@ impl AppState {
             feature = "ali-pay-web",
             feature = "trace",
             feature = "rate-limit",
+            feature = "serve",
             feature = "redis",
             feature = "valkey",
             feature = "wx-official",
@@ -474,6 +483,8 @@ impl AppState {
             scheduler: scheduler::Scheduler::new(),
             #[cfg(feature = "rate-limit")]
             rate_limit_config: config.rate_limit,
+            #[cfg(feature = "serve")]
+            serve: Some(serve::Serve::from_config(&config.serve, "./static")),
             #[cfg(feature = "redis")]
             redis: redis_client,
             #[cfg(all(feature = "valkey", not(feature = "redis")))]

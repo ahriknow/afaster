@@ -106,6 +106,8 @@ pub use state::file;
 pub use state::image;
 #[cfg(feature = "pdf")]
 pub use state::pdf;
+#[cfg(feature = "serve")]
+pub use state::serve;
 
 // ═══════════════════════════════════════════════════════════════
 //  公共导出：消息通知
@@ -357,6 +359,29 @@ impl AFaster {
         self.state = self.state.schedulers(fs);
         self
     }
+
+    /// 设置静态文件服务
+    ///
+    /// # 示例
+    ///
+    /// ```rust,no_run
+    /// // 运行时目录模式
+    /// AFaster::new("config.toml".into()).await?
+    ///     .with_serve(afaster::serve::Serve::from_dir("./dist"))
+    ///     .run().await;
+    ///
+    /// // 编译期嵌入模式
+    /// AFaster::new("config.toml".into()).await?
+    ///     .with_serve(afaster::serve::Serve::from_embedded(
+    ///         include_dir!("$CARGO_MANIFEST_DIR/dist")
+    ///     ))
+    ///     .run().await;
+    /// ```
+    #[cfg(feature = "serve")]
+    pub fn with_serve(mut self, serve: state::serve::Serve) -> Self {
+        self.state.serve = Some(serve);
+        self
+    }
 }
 
 // ── 运行 ────────────────────────────────────────────────────
@@ -392,7 +417,7 @@ impl AFaster {
             panic!("链路追踪未配置存储后端，请设置 [tracing].db_path 或调用 set_trace_store()");
         }
 
-        let mut app = AFast::new().state(state).service(health_svc);
+        let mut app = AFast::new().state(state.clone()).service(health_svc);
 
         // 链路追踪 hook + 服务
         #[cfg(feature = "trace")]
@@ -422,6 +447,15 @@ impl AFaster {
         // 用户服务
         for svc in self.services {
             app = app.service(svc);
+        }
+
+        // 静态文件服务（catch-all, 应最后注册）
+        #[cfg(feature = "serve")]
+        if let Some(ref serve) = state.serve {
+            let path = serve.leaked_path();
+            app = app.service(service!("_serve", "Static File Server" => {
+                get(path, state::serve::serve_handler),
+            }));
         }
 
         // 限流
