@@ -82,6 +82,8 @@ async fn main() {
 | `oss` | 阿里云 OSS 对象存储 |
 | `cos` | 腾讯云 COS 对象存储 |
 | `file` | 本地文件服务（上传/下载/预览） |
+| `serve` | 静态网页服务（Vue/React SPA，运行时目录 / 编译期嵌入） |
+| `serve-embed` | 编译期嵌入整个目录到二进制文件 |
 | `image` | 图片生成（PNG/JPEG/WebP） |
 | `excel` | Excel / CSV 导入导出 |
 | `pdf` | PDF 生成 |

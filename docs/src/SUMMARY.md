@@ -29,6 +29,7 @@
   - [MemKV 内存数据库](./data/memkv.md)
 - [文件处理]()
   - [本地文件服务](./file/file.md)
+  - [静态网页服务](./file/serve.md)
   - [图片生成](./file/image.md)
   - [Excel 导入导出](./file/excel.md)
   - [PDF 生成](./file/pdf.md)

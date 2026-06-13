@@ -20,6 +20,31 @@ async fn main() {
 }
 ```
 
+### 静态文件服务（Vue / React SPA）
+
+```rust
+use afaster::{AFaster, serve::Serve};
+
+#[tokio::main]
+async fn main() {
+    // 运行时目录模式
+    AFaster::new("config.toml".to_string()).await
+        .unwrap()
+        .with_serve(Serve::from_dir("./dist").with_spa(true))
+        .run()
+        .await;
+}
+```
+
+```rust
+// 编译期嵌入模式（整个 dist 目录打包进二进制）
+AFaster::new("config.toml".to_string()).await
+    .unwrap()
+    .with_serve(Serve::from_embedded(include_dir!("$CARGO_MANIFEST_DIR/dist")).with_spa(true))
+    .run()
+    .await;
+```
+
 ## 功能模块
 
 所有功能通过 Cargo feature 控制，按需启用。详见 [config.toml](config.toml)。
@@ -84,6 +109,8 @@ async fn main() {
 | Feature | 说明 |
 |---------|------|
 | `file` | 本地文件服务 |
+| `serve` | 静态网页服务（Vue/React SPA，支持运行时目录 / 编译期嵌入） |
+| `serve-embed` | 编译期嵌入整个目录到二进制文件 |
 | `image` | 图片生成 |
 | `excel` | Excel / CSV 导入导出 |
 | `pdf` | PDF 生成 |

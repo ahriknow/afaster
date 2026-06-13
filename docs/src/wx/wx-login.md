@@ -19,7 +19,7 @@ app_id = "wx1234567890"
 app_secret = ""
 
 # 网页扫码登录
-web_id = "wx1234567890abcdef"
+web_id = ""
 web_secret = ""
 redirect_base = "https://example.com"
 # callback_path = "auth/wechat/callback"  # 默认值，框架自动注册回调路由
@@ -186,7 +186,7 @@ let result = state.wxlogin.web_login_full("CODE").await?;
 var obj = new WxLogin({
     self_redirect: true,
     id: "login_container",
-    appid: "wx1234567890abcdef",
+    appid: "",
     scope: "snsapi_login",
     redirect_uri: encodeURIComponent("https://example.com/auth/wechat/callback"),
     state: "random_state",
