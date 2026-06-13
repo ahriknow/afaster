@@ -5,6 +5,12 @@
 host = "0.0.0.0"  # 绑定地址
 port = 5000       # 监听端口
 
+# TLS / HTTPS（可选, Feature: afast-tls）
+# [backend.tls]
+# port = 443                          # HTTPS 监听端口, 默认 443
+# cert_path = "/etc/ssl/cert.pem"     # PEM 证书链文件路径
+# key_path = "/etc/ssl/key.pem"       # PEM 私钥文件路径
+
 # ═══════════════════════════════════════════════════════════════
 #  JWT 令牌
 #  Feature: jwt
@@ -335,4 +341,4 @@ db_path = "tracing.db"                                # SQLite 存储路径（�
 # ═══════════════════════════════════════════════════════════════
 [serve]
 # prefix = "/"           # URL 前缀, 默认 "/"（即根路径）
-spa = true               # SPA 模式: 未找到文件时返回 index.html, 默认 false
+# spa = true             # SPA 模式: 未找到文件时返回 index.html, 默认 false

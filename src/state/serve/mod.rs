@@ -120,10 +120,7 @@ impl Serve {
     /// 从配置创建（运行时目录模式）
     pub fn from_config(config: &ServeConfig, default_dir: &str) -> Self {
         Self {
-            prefix: config
-                .prefix
-                .clone()
-                .unwrap_or_else(|| "/".to_string()),
+            prefix: config.prefix.clone().unwrap_or_else(|| "/".to_string()),
             spa: config.spa,
             source: ServeSource::Dir(PathBuf::from(default_dir)),
         }

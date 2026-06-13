@@ -639,4 +639,25 @@ impl AppState {
 pub struct Backend {
     pub host: String,
     pub port: u16,
+    #[cfg(feature = "afast-tls")]
+    #[serde(default)]
+    pub tls: Option<TlsBackend>,
+}
+
+/// TLS 后端配置
+#[cfg(feature = "afast-tls")]
+#[derive(Clone, Deserialize)]
+pub struct TlsBackend {
+    /// 监听端口（默认 443）
+    #[serde(default = "default_tls_port")]
+    pub port: u16,
+    /// PEM 证书链文件路径
+    pub cert_path: String,
+    /// PEM 私钥文件路径
+    pub key_path: String,
+}
+
+#[cfg(feature = "afast-tls")]
+fn default_tls_port() -> u16 {
+    443
 }

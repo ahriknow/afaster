@@ -402,6 +402,10 @@ impl AFaster {
         #[allow(unused)]
         let addr = format!("{}:{}", state.backend.host, state.backend.port);
 
+        // 提取 TLS 配置
+        #[cfg(feature = "afast-tls")]
+        let tls_info = state.backend.tls.clone();
+
         // 泄漏路径为 &'static str
         let lp = leak_paths(&state);
 
@@ -483,6 +487,12 @@ impl AFaster {
         #[cfg(feature = "afast-http")]
         {
             app = app.http(&addr);
+        }
+
+        #[cfg(feature = "afast-tls")]
+        if let Some(ref tls) = tls_info {
+            let tls_addr = format!("{}:{}", state.backend.host, tls.port);
+            app = app.https(&tls_addr, &tls.cert_path, &tls.key_path);
         }
 
         #[cfg(feature = "afast-ws")]

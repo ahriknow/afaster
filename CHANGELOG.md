@@ -4,6 +4,8 @@
 
 ### Added
 
+- TLS: 新增 `afast-tls` feature — HTTPS / WSS 支持，基于 rustls 实现
+- TLS: `config.toml` 新增 `[backend.tls]` 配置段，支持自定义端口、证书链和私钥路径
 - Serve: 新增 `serve` feature — 静态文件服务模块，支持运行时目录模式和编译期嵌入模式
 - Serve: 新增 `serve-embed` feature — 使用 `include_dir` 在编译期将整个目录嵌入二进制文件
 - Serve: 支持 SPA 模式（未找到文件时自动回退到 `index.html`）

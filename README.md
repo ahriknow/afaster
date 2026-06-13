@@ -59,6 +59,7 @@ AFaster::new("config.toml".to_string()).await
 | `argon2-hash` | Argon2 密码哈希 |
 | `rbac` | RBAC 权限管理 |
 | `rate-limit` | 令牌桶/滑动窗口限流 |
+| `afast-tls` | HTTPS / WSS 支持（rustls） |
 
 ### 微信生态
 
