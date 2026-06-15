@@ -114,6 +114,9 @@ pub mod wx_official;
 #[cfg(feature = "argon2-hash")]
 pub mod argon2;
 
+#[cfg(feature = "bloom")]
+pub mod bloom;
+
 #[derive(Clone)]
 pub struct AppState {
     pub backend: Backend,
@@ -173,6 +176,8 @@ pub struct AppState {
     pub rbac: Option<rbac::Rbac>,
     #[cfg(feature = "memkv")]
     pub memkv: memkv::MemKV,
+    #[cfg(feature = "bloom")]
+    pub bloom: bloom::BloomFilter,
     #[cfg(any(feature = "socket-binary", feature = "socket-ws", feature = "sse"))]
     pub socket: socket::SocketManager,
     #[cfg(feature = "push")]
@@ -253,6 +258,9 @@ struct ConfigFile {
     redis: redis::RedisConfig,
     #[cfg(all(feature = "valkey", not(feature = "redis")))]
     valkey: redis::ValkeyConfig,
+    #[cfg(feature = "bloom")]
+    #[serde(default)]
+    bloom: bloom::BloomFilterConfig,
 }
 
 impl AppState {
@@ -290,7 +298,8 @@ impl AppState {
             feature = "push",
             feature = "db-postgres",
             feature = "db-sqlite",
-            feature = "db-mysql"
+            feature = "db-mysql",
+            feature = "bloom"
         ))]
         let mut config: ConfigFile = toml::from_str(&content).map_err(|e| {
             crate::Error::custom(50001, format!("Failed to parse config.toml: {}", e))
@@ -324,7 +333,8 @@ impl AppState {
             feature = "push",
             feature = "db-postgres",
             feature = "db-sqlite",
-            feature = "db-mysql"
+            feature = "db-mysql",
+            feature = "bloom"
         )))]
         let config: ConfigFile = toml::from_str(&content).map_err(|e| {
             crate::Error::custom(50001, format!("Failed to parse config.toml: {}", e))
@@ -477,6 +487,8 @@ impl AppState {
             rbac: None,
             #[cfg(feature = "memkv")]
             memkv: memkv::MemKV::new(),
+            #[cfg(feature = "bloom")]
+            bloom: bloom::BloomFilter::from_config(&config.bloom),
             #[cfg(any(feature = "socket-binary", feature = "socket-ws", feature = "sse"))]
             socket: socket::SocketManager::new(),
             #[cfg(feature = "scheduler")]
@@ -587,6 +599,13 @@ impl AppState {
     #[cfg(feature = "memkv")]
     pub fn with_memkv(mut self, memkv: memkv::MemKV) -> Self {
         self.memkv = memkv;
+        self
+    }
+
+    /// 链式配置 BloomFilter
+    #[cfg(feature = "bloom")]
+    pub fn with_bloom(mut self, f: impl FnOnce(bloom::BloomFilter) -> bloom::BloomFilter) -> Self {
+        self.bloom = f(self.bloom);
         self
     }
 

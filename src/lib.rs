@@ -85,6 +85,8 @@ pub use state::github_oauth2;
 //  公共导出：存储与数据
 // ═══════════════════════════════════════════════════════════════
 
+#[cfg(feature = "bloom")]
+pub use state::bloom;
 #[cfg(feature = "memkv")]
 pub use state::memkv;
 #[cfg(feature = "rbac")]
@@ -340,6 +342,16 @@ impl AFaster {
         self
     }
 
+    /// 链式配置 BloomFilter
+    #[cfg(feature = "bloom")]
+    pub fn with_bloom(
+        mut self,
+        f: impl FnOnce(state::bloom::BloomFilter) -> state::bloom::BloomFilter,
+    ) -> Self {
+        self.state = self.state.with_bloom(f);
+        self
+    }
+
     /// 链式注册定时任务
     #[cfg(feature = "scheduler")]
     pub fn with_scheduler(
@@ -437,6 +449,12 @@ impl AFaster {
                 get(lp.tracing_url, state::trace::page::tracing_page),
                 sse(lp.tracing_event, state::trace::handler::trace_events),
             }));
+        }
+
+        // 布隆过滤器 hook
+        #[cfg(feature = "bloom")]
+        {
+            app = app.hook(state::bloom::create_hook(&state.bloom));
         }
 
         // 扩展状态

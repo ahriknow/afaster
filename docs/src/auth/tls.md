@@ -29,7 +29,7 @@ key_path = "/etc/ssl/key.pem"     # PEM 私钥文件路径
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.2", features = ["afast-http", "afast-ws", "afast-tls"] }
+afaster = { version = "0.0.3", features = ["afast-http", "afast-ws", "afast-tls"] }
 ```
 
 无需修改代码，框架在 `run()` 时自动检测 `[backend.tls]` 配置，存在则启动 HTTPS 服务器：

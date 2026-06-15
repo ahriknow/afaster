@@ -29,6 +29,23 @@ secret = "your-jwt-secret-key"  # JWT 签名密钥
 # epoch = 0           # 自定义起始时间 (毫秒时间戳), 0 = 使用当前时间, 默认 0
 
 # ═══════════════════════════════════════════════════════════════
+#  布隆过滤器
+#  Feature: bloom
+# ═══════════════════════════════════════════════════════════════
+# [bloom]
+# expected_items = 100000     # 预期存储的元素数量, 默认 100000
+# false_positive_rate = 0.01  # 可接受的误判率 (0.0~1.0), 默认 0.01
+# auto_check_key = "ip"       # Hook 自动检查的请求属性:
+#                             #   "ip"             — 优先真实 IP (forwarded_for)，回退代理 IP (client_ip)
+#                             #   "forwarded_for"  — 真实 IP (X-Forwarded-For / X-Real-IP)，回退代理 IP
+#                             #   "client_ip"      — 代理 IP (TCP 直连地址)
+#                             #   "path"           — 请求路径
+#                             #   "method+path"    — HTTP 方法 + 路径
+#                             #   "handler"        — handler 名称
+#                             #   "header:<name>"  — 指定 Header 值
+#                             #   不设置则仅将 BloomFilter 写入 ctx，由 handler 手动使用
+
+# ═══════════════════════════════════════════════════════════════
 #  Redis
 #  Feature: redis (与 valkey 互斥)
 # ═══════════════════════════════════════════════════════════════

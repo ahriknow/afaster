@@ -12,6 +12,9 @@
 - Serve: 支持自定义 URL 前缀（如 `/app`）
 - Serve: 自动 MIME 类型推断（基于文件扩展名）
 - Serve: 路径遍历安全防护
+- Bloom Filter: `auto_check_key` 新增 `"client_ip"` 和 `"forwarded_for"` 选项，支持按真实 IP 或代理 IP 进行过滤
+- Bloom Filter: `"ip"` 选项语义更新——优先真实 IP (`X-Forwarded-For` / `X-Real-IP`)，无代理时回退到代理 IP (TCP 直连地址)
+- Bloom Filter: 新增 `docs/src/data/bloom.md` 文档页，包含配置说明、使用示例和 API 参考
 
 ## [0.0.2]
 

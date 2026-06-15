@@ -27,6 +27,7 @@
   - [数据库](./data/database.md)
   - [Redis](./data/redis.md)
   - [MemKV 内存数据库](./data/memkv.md)
+  - [Bloom Filter 布隆过滤器](./data/bloom.md)
 - [文件处理]()
   - [本地文件服务](./file/file.md)
   - [静态网页服务](./file/serve.md)
