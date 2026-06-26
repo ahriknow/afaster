@@ -95,10 +95,12 @@ impl Serve {
     /// let serve = Serve::from_dir("./dist");
     /// ```
     pub fn from_dir(dir: impl Into<PathBuf>) -> Self {
+        let dir = dir.into();
+        let dir = dir.canonicalize().unwrap_or(dir);
         Self {
             prefix: "/".to_string(),
             spa: false,
-            source: ServeSource::Dir(dir.into()),
+            source: ServeSource::Dir(dir),
         }
     }
 
@@ -119,10 +121,12 @@ impl Serve {
 
     /// 从配置创建（运行时目录模式）
     pub fn from_config(config: &ServeConfig, default_dir: &str) -> Self {
+        let dir = PathBuf::from(default_dir);
+        let dir = dir.canonicalize().unwrap_or(dir);
         Self {
             prefix: config.prefix.clone().unwrap_or_else(|| "/".to_string()),
             spa: config.spa,
-            source: ServeSource::Dir(PathBuf::from(default_dir)),
+            source: ServeSource::Dir(dir),
         }
     }
 
@@ -185,8 +189,11 @@ impl Serve {
             relative.to_string()
         };
 
-        // 安全检查: 防止路径遍历
-        if path.contains("..") {
+        // 安全检查: 防止路径遍历 — 拒绝任何包含 `..` 的 segment
+        if path
+            .split('/')
+            .any(|seg| seg == ".." || seg == "%2e%2e" || seg == ".%2e" || seg == "%2e.")
+        {
             return None;
         }
 
@@ -195,8 +202,17 @@ impl Serve {
         match &self.source {
             ServeSource::Dir(dir) => {
                 let full_path = dir.join(&path);
-                match std::fs::read(&full_path) {
-                    Ok(data) => Some((data, mime)),
+                // canonicalize 后检查是否在 root 下
+                match full_path.canonicalize() {
+                    Ok(canon) => {
+                        if !canon.starts_with(dir) {
+                            return None;
+                        }
+                        match std::fs::read(&canon) {
+                            Ok(data) => Some((data, mime)),
+                            Err(_) => None,
+                        }
+                    }
                     Err(_) => None,
                 }
             }

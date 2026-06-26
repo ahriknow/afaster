@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.5]
+
+### Fixed
+
+- **Serve**: Hardened path traversal protection — `canonicalize` + `starts_with` validation prevents directory escape attacks, matching the security level of the file module
+
 ## [0.0.4]
 
 ### Added

@@ -21,7 +21,7 @@ repository = "https://github.com/ahriknow/afaster"
 
 [workspace.dependencies]
 afaster = { path = ".", default-features = false }
-afast = { version = "0.1.22"}
+afast = { version = "0.1.22" }
 afastdata = { version = "0.0.10" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1" }
