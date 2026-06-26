@@ -1,49 +1,31 @@
 #![allow(dead_code)]
 
 // ═══════════════════════════════════════════════════════════════
-//  腾讯云短信错误 (模块 11)
-//  用户错误: 41101~41199
-//  内部错误: 51101~51199
+//  腾讯云短信错误 (模块 17)
+//  用户错误: 41701~41799
+//  内部错误: 51701~51799
 // ═══════════════════════════════════════════════════════════════
 
-/// SMS credentials not configured (41101)
+/// 短信凭证未配置 (41701)
 #[inline]
 pub fn missing_credentials() -> crate::Error {
-    crate::Error::custom(41101, "Tencent SMS credentials not configured")
+    crate::Error::custom(41701, "Tencent SMS credentials not configured")
 }
 
-/// HMAC-SHA256 初始化失败 (51102)
+/// HMAC-SHA256 初始化失败 (51701)
 #[inline]
 pub fn hmac_sha256() -> crate::Error {
-    crate::Error::custom(51102, "HMAC-SHA256 init failed")
+    crate::Error::custom(51701, "HMAC-SHA256 init failed")
 }
 
-/// SMS API request failed (51103)
+/// 短信 API 请求失败 (51702)
 #[inline]
 pub fn request_failed(detail: &str) -> crate::Error {
-    crate::Error::custom(51103, format!("Tencent SMS request failed: {}", detail))
+    crate::Error::custom(51702, format!("Tencent SMS request failed: {}", detail))
 }
 
-/// SMS API response parse failed (51104)
-#[inline]
-pub fn response_parse_failed(detail: &str) -> crate::Error {
-    crate::Error::custom(
-        51104,
-        format!("Tencent SMS response parse failed: {}", detail),
-    )
-}
-
-/// SMS API error returned by provider (51105)
-#[inline]
-pub fn api_error(code: &str, message: &str) -> crate::Error {
-    crate::Error::custom(
-        51105,
-        format!("Tencent SMS API error [{}]: {}", code, message),
-    )
-}
-
-/// SMS report callback not registered (51107)
+/// 短信回执回调未注册 (51703)
 #[inline]
 pub fn no_callback() -> crate::Error {
-    crate::Error::custom(51107, "Tencent SMS report callback not registered")
+    crate::Error::custom(51703, "Tencent SMS report callback not registered")
 }

@@ -98,7 +98,7 @@ db_path = "tracing.db"
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.4", features = ["trace-sqlite", "trace-receive-http"] }
+afaster = { version = "0.0.5", features = ["trace-sqlite", "trace-receive-http"] }
 ```
 
 ## 使用

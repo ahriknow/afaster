@@ -24,7 +24,7 @@ contact = "mailto:ahriknow@ahriknow.com"
 cache_dir = "./acme_cache"
 # staging = false
 # renewal_days = 30
-# allow_non_80 = false
+allow_non_80 = true
 
 [tracing]
 service_name = "blog-example"

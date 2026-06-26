@@ -2,8 +2,20 @@
 
 ## [0.0.5]
 
+### Added
+
+- **ACME**: 新增 `allow_non_80` 配置项 — 允许非 80 端口运行（需自行配置反向代理），默认 `false` 时 `backend.port` 必须为 80
+- **ACME**: 新增 `with_on_cert_failed` 回调 — 证书申请或续期失败时触发，可用于发送告警
+- **ACME**: 详细进度日志 — 每个步骤（1/7 ~ 7/7）打印进度，轮询循环带计数器和超时（300 秒）
+- **ACME**: 证书过期检查改为解析 PEM 证书 `not_after` 字段（通过 `x509-certificate`），不再依赖文件修改时间
+
 ### Fixed
 
+- **ACME**: 修复多域名验证逻辑 — 先通知所有域名的 challenge，再统一轮询 order 状态（之前逐个通知导致订单 invalid）
+- **ACME**: 修复 `rustls` CryptoProvider 未安装的 panic — 添加 `install_default()` 调用
+- **ACME**: 解耦 `acme` 与 `afast-tls` feature — 启用 `acme` 不再自动启用 TLS 模块
+- **WxVirtualPay**: 修复错误信息误写为"登录"的问题，改为准确的"虚拟支付"语义
+- **WxVirtualPay**: 补回丢失的 `missing_verify_param`、`signature_mismatch`、`decrypt_failed` 错误函数
 - **Serve**: Hardened path traversal protection — `canonicalize` + `starts_with` validation prevents directory escape attacks, matching the security level of the file module
 
 ## [0.0.4]

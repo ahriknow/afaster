@@ -230,7 +230,7 @@ async fn main() {
 | 12 | 腾讯云 COS | 28 | RBAC |
 | 13 | 高德地图 | 29 | MemKV |
 | 14 | 腾讯地图 | 30 | 链路追踪 |
-| **15** | **ahrisql（预留）** | 31 | ACME |
+| **15** | ACME |
 
 完整错误码列表见 [docs/src/errors.md](docs/src/errors.md)。
 

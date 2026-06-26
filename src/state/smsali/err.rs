@@ -6,7 +6,7 @@
 //  内部错误: 51101~51199
 // ═══════════════════════════════════════════════════════════════
 
-/// SMS credentials not configured (41101)
+/// 短信凭证未配置 (41101)
 #[inline]
 pub fn missing_credentials() -> crate::Error {
     crate::Error::custom(41101, "Alibaba SMS credentials not configured")
@@ -18,32 +18,14 @@ pub fn hmac_sha1() -> crate::Error {
     crate::Error::custom(51101, "HMAC-SHA1 init failed")
 }
 
-/// SMS API request failed (51103)
+/// 短信 API 请求失败 (51102)
 #[inline]
 pub fn request_failed(detail: &str) -> crate::Error {
-    crate::Error::custom(51103, format!("Alibaba SMS request failed: {}", detail))
+    crate::Error::custom(51102, format!("Alibaba SMS request failed: {}", detail))
 }
 
-/// SMS API response parse failed (51104)
-#[inline]
-pub fn response_parse_failed(detail: &str) -> crate::Error {
-    crate::Error::custom(
-        51104,
-        format!("Alibaba SMS response parse failed: {}", detail),
-    )
-}
-
-/// SMS API error returned by provider (51105)
-#[inline]
-pub fn api_error(code: &str, message: &str) -> crate::Error {
-    crate::Error::custom(
-        51105,
-        format!("Alibaba SMS API error [{}]: {}", code, message),
-    )
-}
-
-/// SMS report callback not registered (51106)
+/// 短信回执回调未注册 (51103)
 #[inline]
 pub fn no_callback() -> crate::Error {
-    crate::Error::custom(51106, "Alibaba SMS report callback not registered")
+    crate::Error::custom(51103, "Alibaba SMS report callback not registered")
 }

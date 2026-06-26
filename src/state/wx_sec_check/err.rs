@@ -6,7 +6,7 @@
 
 // ── 文本内容安全 ──────────────────────────────────────────────
 
-/// 微信 API 返回业务错误 (40701)
+/// 微信 API 业务错误 (40701)
 #[inline]
 pub fn api(errmsg: &str) -> crate::Error {
     crate::Error::custom(40701, errmsg)
@@ -54,22 +54,22 @@ pub fn token_parse() -> crate::Error {
     crate::Error::custom(50706, "Access_token response parse failed")
 }
 
-// ── 回调通知 ────────────────────────────────────────────────
+// ── 内容安全回调 (模块 08) ─────────────────────────────────
 
-/// 缺少验签参数 (40811)
+/// 缺少验签参数 (40801)
 #[inline]
 pub fn missing_verify_param() -> crate::Error {
-    crate::Error::custom(40811, "Missing signature verification parameter")
+    crate::Error::custom(40801, "Missing signature verification parameter")
 }
 
-/// 签名验证失败 (40812)
+/// 签名验证失败 (40802)
 #[inline]
 pub fn signature_mismatch() -> crate::Error {
-    crate::Error::custom(40812, "Signature verification failed")
+    crate::Error::custom(40802, "Signature verification failed")
 }
 
-/// 消息体解密失败 (40813)
+/// 消息体解密失败 (40803)
 #[inline]
 pub fn decrypt_failed(detail: &str) -> crate::Error {
-    crate::Error::custom(40813, format!("Message body decryption failed: {}", detail))
+    crate::Error::custom(40803, format!("Message body decryption failed: {}", detail))
 }

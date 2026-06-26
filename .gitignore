@@ -4,6 +4,7 @@
 /example/client
 /examples/**/config.toml
 /acme_cache
+/data
 docs/book
 /*.db
 /*.db-shm
