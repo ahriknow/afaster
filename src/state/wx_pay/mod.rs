@@ -99,6 +99,12 @@ impl WxPay {
         Ok(())
     }
 
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "wx_pay")?;
+        instance.init()?;
+        Ok(instance)
+    }
+
     /// 注册支付成功回调
     pub fn with_pay_success_callback(
         mut self,
@@ -413,7 +419,7 @@ pub async fn send_v3_request(
 }
 
 /// 处理非 2xx 响应
-pub async fn handle_error_response(resp: reqwest::Response, _context: &str) -> crate::Error {
+pub async fn handle_error_response(resp: reqwest::Response, context: &str) -> crate::Error {
     let err_body: serde_json::Value = resp.json().await.unwrap_or_default();
     let code = err_body
         .get("code")
@@ -1139,4 +1145,21 @@ pub async fn prepay_js_mini(
         return Err(handle_error_response(resp, "prepay_js_mini").await);
     }
     resp.json().await.map_err(|_e| prepay_response())
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 微信支付配置扩展
+pub trait AFasterWxPayExt {
+    /// 链式配置微信支付
+    fn with_wx_pay(self, f: impl FnOnce(WxPay) -> WxPay) -> Self;
+}
+
+impl AFasterWxPayExt for crate::AFaster {
+    fn with_wx_pay(mut self, f: impl FnOnce(WxPay) -> WxPay) -> Self {
+        self.state.wx_pay = f(self.state.wx_pay);
+        self
+    }
 }

@@ -108,6 +108,7 @@ impl Argon2Config {
 /// });
 /// let hash = hasher.hash("my_password").unwrap();
 /// ```
+#[derive(Clone)]
 pub struct Argon2Hasher {
     config: Argon2Config,
 }

@@ -72,7 +72,7 @@ impl AmapResponse {
             return code == 0;
         }
         // 如果没有 status 也没有 errcode，检查是否有业务数据
-        !self.status.is_empty() || self.data.as_object().map_or(false, |m| !m.is_empty())
+        !self.status.is_empty() || self.data.as_object().is_some_and(|m| !m.is_empty())
     }
 
     /// 获取错误信息（兼容 v3 和 v4）
@@ -91,6 +91,12 @@ impl AmapResponse {
 }
 
 // ── 实现 ──────────────────────────────────────────────────────
+
+impl Default for Amap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Amap {
     pub fn new() -> Self {
@@ -465,5 +471,11 @@ impl Amap {
             params.push(("extensions", ext));
         }
         self.get("/v3/weather/weatherInfo", &params).await
+    }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "amap")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
     }
 }

@@ -141,3 +141,9 @@ impl RateLimitModuleConfig {
         Some(config)
     }
 }
+
+impl RateLimitModuleConfig {
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        crate::state::extract(table, "rate_limit")
+    }
+}

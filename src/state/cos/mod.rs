@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 mod err;
 use err::*;
 
@@ -465,5 +464,11 @@ impl Cos {
     ) -> crate::Result<String> {
         self.get_signed_video_snapshot(key, 0, width, height, "jpg")
             .await
+    }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "cos")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
     }
 }

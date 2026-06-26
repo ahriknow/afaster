@@ -186,4 +186,10 @@ impl PushManager {
             self.xiaomi.client = reqwest::Client::new();
         }
     }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "push")?;
+        instance.init();
+        Ok(instance)
+    }
 }

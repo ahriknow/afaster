@@ -10,6 +10,18 @@ pub struct LogGuard {
     pub _trace: tracing_appender::non_blocking::WorkerGuard,
 }
 
+fn is_noisy_crate(target: &str) -> bool {
+    target.starts_with("hyper")
+        || target.starts_with("rustls")
+        || target.starts_with("h2")
+        || target.starts_with("tower")
+        || target.starts_with("reqwest")
+        || target.starts_with("tokio")
+        || target.starts_with("mio")
+        || target.starts_with("want")
+        || target.starts_with("native_tls")
+}
+
 pub fn init_logger() -> LogGuard {
     let error_appender = RollingFileAppender::new(Rotation::DAILY, "logs", "error.log");
     let warn_appender = RollingFileAppender::new(Rotation::DAILY, "logs", "warn.log");
@@ -54,14 +66,16 @@ pub fn init_logger() -> LogGuard {
         .with_writer(trace_writer)
         .with_ansi(false)
         .with_filter(filter_fn(|metadata| {
-            metadata.level() == &tracing::Level::TRACE
+            metadata.level() == &tracing::Level::TRACE && !is_noisy_crate(metadata.target())
         }));
 
     // 标准输出记录 DEBUG 及以上级别的日志
     let stdout_layer = fmt::layer()
         .with_writer(std::io::stdout)
         .with_ansi(true)
-        .with_filter(tracing_subscriber::filter::LevelFilter::DEBUG);
+        .with_filter(filter_fn(|metadata| {
+            metadata.level() == &tracing::Level::DEBUG && !is_noisy_crate(metadata.target())
+        }));
 
     tracing_subscriber::registry()
         .with(error_layer)

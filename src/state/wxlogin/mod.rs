@@ -226,7 +226,7 @@ impl WxLogin {
         let redirect_uri = self.web_redirect_uri();
         let mut url = format!(
             "https://open.weixin.qq.com/connect/qrconnect?appid={}&redirect_uri={}&response_type=code&scope=snsapi_login",
-            self.web_id, &redirect_uri
+            self.web_id, redirect_uri
         );
         if let Some(s) = state {
             url.push_str(&format!("&state={}", s));
@@ -585,4 +585,29 @@ pub struct WxWebLoginResult {
     pub unionid: Option<String>,
     /// 用户信息（仅当 scope 包含 snsapi_userinfo 时有值）
     pub userinfo: Option<WxWebUserInfo>,
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 微信登录配置扩展
+pub trait AFasterWxLoginExt {
+    /// 链式配置微信登录
+    fn with_wxlogin(self, f: impl FnOnce(WxLogin) -> WxLogin) -> Self;
+}
+
+impl AFasterWxLoginExt for crate::AFaster {
+    fn with_wxlogin(mut self, f: impl FnOnce(WxLogin) -> WxLogin) -> Self {
+        self.state.wxlogin = f(self.state.wxlogin);
+        self
+    }
+}
+
+impl WxLogin {
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "wxlogin")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
+    }
 }

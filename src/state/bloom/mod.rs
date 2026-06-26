@@ -126,7 +126,7 @@ impl BloomFilter {
         let num_hashes = Self::optimal_hashes(num_bits, expected_items);
 
         Self {
-            bits: std::sync::Arc::new(RwLock::new(vec![0u64; (num_bits + 63) / 64])),
+            bits: std::sync::Arc::new(RwLock::new(vec![0u64; num_bits.div_ceil(64)])),
             num_hashes,
             num_bits,
             config: BloomFilterConfig {
@@ -142,6 +142,17 @@ impl BloomFilter {
         let mut bf = Self::new(config.expected_items, config.false_positive_rate);
         bf.config = config.clone();
         bf
+    }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let config: BloomFilterConfig = match table.get("bloom") {
+            Some(v) => v
+                .clone()
+                .try_into()
+                .map_err(|e| crate::Error::custom(50001, format!("[bloom] {}", e)))?,
+            None => BloomFilterConfig::default(),
+        };
+        Ok(Self::from_config(&config))
     }
 
     /// 向布隆过滤器添加元素
@@ -185,11 +196,9 @@ impl BloomFilter {
         for &pos in &positions {
             let index = pos / 64;
             let offset = pos % 64;
-            if index < bits.len() {
-                if (bits[index] & (1u64 << offset)) == 0 {
-                    exists = false;
-                    bits[index] |= 1u64 << offset;
-                }
+            if index < bits.len() && (bits[index] & (1u64 << offset)) == 0 {
+                exists = false;
+                bits[index] |= 1u64 << offset;
             }
         }
         exists
@@ -493,5 +502,22 @@ impl afast::hook::ConnectionGuard for BloomFilterConnectionGuard {
     fn on_disconnect(&mut self, _ctx: &afast::hook::RequestContext) {
         #[cfg(feature = "log")]
         ::tracing::trace!("bloom: connection closed");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 布隆过滤器配置扩展
+pub trait AFasterBloomExt {
+    /// 链式配置 BloomFilter
+    fn with_bloom(self, f: impl FnOnce(BloomFilter) -> BloomFilter) -> Self;
+}
+
+impl AFasterBloomExt for crate::AFaster {
+    fn with_bloom(mut self, f: impl FnOnce(BloomFilter) -> BloomFilter) -> Self {
+        self.state.bloom = f(self.state.bloom);
+        self
     }
 }

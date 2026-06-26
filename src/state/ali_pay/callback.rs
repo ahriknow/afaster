@@ -343,9 +343,5 @@ async fn callback(
         return Ok(afast::Text("fail".to_string()));
     }
 
-    state
-        .ali_pay
-        .handle_notify(state.clone(), params)
-        .await
-        .map_err(|e| e.into())
+    state.ali_pay.handle_notify(state.clone(), params).await
 }

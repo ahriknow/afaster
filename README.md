@@ -59,7 +59,13 @@ AFaster::new("config.toml".to_string()).await
 | `argon2-hash` | Argon2 密码哈希 |
 | `rbac` | RBAC 权限管理 |
 | `rate-limit` | 令牌桶/滑动窗口限流 |
-| `afast-tls` | HTTPS / WSS 支持（rustls） |
+
+### 网络与安全
+
+| Feature | 说明 |
+|---------|------|
+| `afast-tls` | HTTPS / WSS 支持（rustls），独立 `[tls]` 配置段 |
+| `acme` | Let's Encrypt 自动证书申请与续期（HTTP-01 验证） |
 
 ### 微信生态
 
@@ -152,6 +158,11 @@ AFaster::new("config.toml".to_string()).await
 - `with_*` — 配置模块（闭包方式，如 `with_wx_pay(|w| w...)`）
 - `with_*_callback` — 注册回调（如 `with_github_callback(cb)`）
 
+> **注意**：`with_*` / `set_*` 方法定义在各模块的 extension trait 中，使用时需引入对应 trait：
+> ```rust
+> use afaster::{AFaster, AFasterRbacExt, AFasterAcmeExt, AFasterServeExt};
+> ```
+
 ### 回调机制
 
 支持回调的模块通过链式方法注册闭包：
@@ -201,6 +212,25 @@ async fn main() {
 ## 错误码
 
 错误码为 5 位数字：第 1 位表示类别（`4` = 用户错误，`5` = 内部错误），第 2~3 位表示模块编号，第 4~5 位表示模块内序号。
+
+| 模块编号 | 模块 | 模块编号 | 模块 |
+|----------|------|----------|------|
+| 00 | 通用 | 16 | Redis / Valkey |
+| 01 | JWT | 17 | 腾讯云短信 |
+| 02 | 微信小程序登录 | 18 | Excel |
+| 03 | 微信 APP 登录 | 19 | 本地文件 |
+| 04 | 阿里云 OSS | 20 | 限流 |
+| 05 | GitHub OAuth2 | 21 | 微信网页登录 |
+| 06 | 微信虚拟支付 | 22 | 微信公众号授权 |
+| 07 | 微信内容安全 | 23 | 微信公众号管理 |
+| 08 | 微信内容安全回调 | 24 | Argon2 |
+| 09 | 微信支付 | 25 | 数据库 |
+| 10 | 邮件 | 26 | 支付宝 |
+| 11 | 阿里云短信 | 27 | 推送 |
+| 12 | 腾讯云 COS | 28 | RBAC |
+| 13 | 高德地图 | 29 | MemKV |
+| 14 | 腾讯地图 | 30 | 链路追踪 |
+| **15** | **ahrisql（预留）** | 31 | ACME |
 
 完整错误码列表见 [docs/src/errors.md](docs/src/errors.md)。
 

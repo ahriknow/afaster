@@ -100,10 +100,6 @@ impl MemKV {
         }
     }
 
-    /// 内部：获取值引用，自动跳过已过期的 key
-
-    /// 内部：删除过期 key
-
     // ══════════════════════════════════════════════════════════
     //  STRING 操作
     // ══════════════════════════════════════════════════════════
@@ -160,10 +156,10 @@ impl MemKV {
         ttl: Option<Duration>,
     ) -> crate::Result<bool> {
         let mut map = self.inner.write().await;
-        if let Some(entry) = map.get(key) {
-            if !entry.is_expired() {
-                return Ok(false);
-            }
+        if let Some(entry) = map.get(key)
+            && !entry.is_expired()
+        {
+            return Ok(false);
         }
         map.insert(
             key.to_string(),

@@ -1,4 +1,5 @@
 mod err;
+
 use err::*;
 
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
@@ -24,7 +25,7 @@ impl Token {
     /// 创建 JWT 令牌，支持嵌入泛型数据
     pub fn create_token<T: Serialize>(&self, user_id: i64, data: T) -> crate::Result<String> {
         let expiration = chrono::Utc::now()
-            .checked_add_signed(chrono::Duration::hours(self.expire as i64))
+            .checked_add_signed(chrono::Duration::hours(self.expire))
             .ok_or_else(|| {
                 #[cfg(feature = "log")]
                 tracing::error!({ code = 50003, msg = "Invalid timestamp" });
@@ -57,6 +58,20 @@ impl Token {
     pub fn get_id(&self, token: &str) -> crate::Result<i64> {
         let claims = self.verify_token::<serde::de::IgnoredAny>(token)?;
         Ok(claims.uid)
+    }
+
+    pub fn get_super_id(&self, token: &str) -> crate::Result<i64> {
+        let claims = self.verify_token::<Data1>(token)?;
+        let uid = claims.uid;
+        let data = claims.data.ok_or_else(|| {
+            #[cfg(feature = "log")]
+            tracing::error!({ code = 50103, msg = "Token data not found" });
+            crate::Error::custom(50103, "Token data not found")
+        })?;
+        if !data.is_super {
+            return Err(crate::Error::custom(403, "权限不足"));
+        }
+        Ok(uid)
     }
 
     /// 验证令牌并返回完整声明（含泛型数据）
@@ -108,4 +123,10 @@ pub struct Claims<T = ()> {
     pub uid: i64,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub data: Option<T>,
+}
+
+impl Token {
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        crate::state::extract(table, "token")
+    }
 }

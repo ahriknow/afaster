@@ -13,6 +13,6 @@ async fn health() -> afast::Result<HealthResponse> {
     tracing::info!("Health check called");
     Ok(HealthResponse {
         status: "ok".into(),
-        version: "0.0.3".into(),
+        version: "0.0.4".into(),
     })
 }

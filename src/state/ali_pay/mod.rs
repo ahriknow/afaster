@@ -404,10 +404,10 @@ fn build_sign_content_from_json(json_str: &str) -> afast::Result<String> {
         .iter()
         .filter(|(k, _)| k.as_str() != "sign")
         .filter_map(|(k, v)| {
-            if let serde_json::Value::String(s) = v {
-                if !s.is_empty() {
-                    return Some((k.as_str(), s));
-                }
+            if let serde_json::Value::String(s) = v
+                && !s.is_empty()
+            {
+                return Some((k.as_str(), s));
             }
             None
         })
@@ -488,12 +488,10 @@ async fn call_api<T: for<'de> Deserialize<'de>>(
     if let (Some(sign_val), Some(pub_key)) = (
         outer.get("sign").and_then(|v| v.as_str()),
         alipay_public_key,
-    ) {
-        if let Some(resp_obj) = outer.get(response_key) {
-            if let Ok(sign_content) = build_sign_content_from_json(&resp_obj.to_string()) {
-                let _ = rsa2_verify(&sign_content, sign_val, pub_key);
-            }
-        }
+    ) && let Some(resp_obj) = outer.get(response_key)
+        && let Ok(sign_content) = build_sign_content_from_json(&resp_obj.to_string())
+    {
+        let _ = rsa2_verify(&sign_content, sign_val, pub_key);
     }
 
     let resp_value = outer.get(response_key).unwrap_or(&outer);
@@ -515,6 +513,12 @@ impl AliPay {
                 Some(load_public_key(&self.config.alipay_public_key)?);
         }
         Ok(())
+    }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "ali_pay")?;
+        instance.init()?;
+        Ok(instance)
     }
 
     /// 注册支付成功回调
@@ -558,7 +562,7 @@ impl AliPay {
             self.runtime
                 .private_key_parsed
                 .as_ref()
-                .ok_or_else(|| err::private_key_not_init())?,
+                .ok_or_else(err::private_key_not_init)?,
         )?;
         params.push(("sign".to_string(), sign));
 
@@ -614,7 +618,7 @@ impl AliPay {
             self.runtime
                 .private_key_parsed
                 .as_ref()
-                .ok_or_else(|| err::private_key_not_init())?,
+                .ok_or_else(err::private_key_not_init)?,
             self.runtime.alipay_public_key_parsed.as_ref(),
             "alipay.trade.query",
             &biz,
@@ -643,7 +647,7 @@ impl AliPay {
             self.runtime
                 .private_key_parsed
                 .as_ref()
-                .ok_or_else(|| err::private_key_not_init())?,
+                .ok_or_else(err::private_key_not_init)?,
             self.runtime.alipay_public_key_parsed.as_ref(),
             "alipay.trade.close",
             &biz,
@@ -677,7 +681,7 @@ impl AliPay {
             self.runtime
                 .private_key_parsed
                 .as_ref()
-                .ok_or_else(|| err::private_key_not_init())?,
+                .ok_or_else(err::private_key_not_init)?,
             self.runtime.alipay_public_key_parsed.as_ref(),
             "alipay.trade.refund",
             &biz,
@@ -708,7 +712,7 @@ impl AliPay {
             self.runtime
                 .private_key_parsed
                 .as_ref()
-                .ok_or_else(|| err::private_key_not_init())?,
+                .ok_or_else(err::private_key_not_init)?,
             self.runtime.alipay_public_key_parsed.as_ref(),
             "alipay.trade.fastpay.refund.query",
             &biz,
@@ -737,7 +741,7 @@ impl AliPay {
             self.runtime
                 .private_key_parsed
                 .as_ref()
-                .ok_or_else(|| err::private_key_not_init())?,
+                .ok_or_else(err::private_key_not_init)?,
             self.runtime.alipay_public_key_parsed.as_ref(),
             "alipay.data.dataservice.bill.downloadurl.query",
             &biz,
@@ -757,7 +761,7 @@ impl AliPay {
             .runtime
             .alipay_public_key_parsed
             .as_ref()
-            .ok_or_else(|| err::public_key_not_configured())?;
+            .ok_or_else(err::public_key_not_configured)?;
 
         let sign = params
             .iter()
@@ -798,5 +802,22 @@ impl AliPay {
         params: Vec<(String, String)>,
     ) -> afast::Result<afast::Text> {
         callback::dispatch_notify(&self.runtime, state, params).await
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 支付宝配置扩展
+pub trait AFasterAliPayExt {
+    /// 链式配置支付宝电脑网站支付
+    fn with_ali_pay(self, f: impl FnOnce(AliPay) -> AliPay) -> Self;
+}
+
+impl AFasterAliPayExt for crate::AFaster {
+    fn with_ali_pay(mut self, f: impl FnOnce(AliPay) -> AliPay) -> Self {
+        self.state.ali_pay = f(self.state.ali_pay);
+        self
     }
 }

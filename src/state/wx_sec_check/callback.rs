@@ -91,7 +91,7 @@ pub async fn verify(
 ) -> afast::Result<afast::Text> {
     let token = &state.wx_sec_check.verify_token;
     if token.is_empty() {
-        return Err(super::err::missing_verify_param());
+        return Err(afast::Error::custom(40801, "missing verify param"));
     }
     super::notify::verify_signature(token, &query.timestamp, &query.nonce, &query.signature)?;
     Ok(afast::Text(query.echostr))

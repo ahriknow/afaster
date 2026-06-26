@@ -128,6 +128,25 @@ impl Database {
         })
     }
 
+    pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        #[cfg(feature = "db-postgres")]
+        let postgres: PostgresConfig = crate::state::extract(table, "postgres")?;
+        #[cfg(feature = "db-sqlite")]
+        let sqlite: SqliteConfig = crate::state::extract(table, "sqlite")?;
+        #[cfg(feature = "db-mysql")]
+        let mysql: MysqlConfig = crate::state::extract(table, "mysql")?;
+
+        Self::connect(
+            #[cfg(feature = "db-postgres")]
+            &postgres,
+            #[cfg(feature = "db-sqlite")]
+            &sqlite,
+            #[cfg(feature = "db-mysql")]
+            &mysql,
+        )
+        .await
+    }
+
     /// 建立 PostgreSQL 连接池
     #[cfg(feature = "db-postgres")]
     async fn connect_postgres(config: &PostgresConfig) -> crate::Result<PgPool> {

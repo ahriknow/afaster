@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 mod err;
 use err::*;
 
@@ -143,7 +142,7 @@ impl Oss {
     /// 路径编码（保留 /）
     fn uri_encode_path(path: &str) -> String {
         path.split('/')
-            .map(|s| Self::uri_encode(s))
+            .map(Self::uri_encode)
             .collect::<Vec<_>>()
             .join("/")
     }
@@ -631,5 +630,11 @@ x-oss-signature-version=OSS4-HMAC-SHA256",
             tokens.push(self.get_sts_token(path).await?);
         }
         Ok(tokens)
+    }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "oss")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
     }
 }

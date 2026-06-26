@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.3", features = ["jwt", "log", "redis"] }
+afaster = { version = "0.0.4", features = ["jwt", "log", "redis"] }
 ```
 
 ## 配置
@@ -49,7 +49,13 @@ async fn main() {
 | `github-oauth2` | GitHub OAuth2 登录（自动启用 `nonce`） |
 | `argon2-hash` | Argon2i/d/id 密码哈希 |
 | `rate-limit` | 限流（令牌桶/滑动窗口，防刷防攻击） |
-| `afast-tls` | HTTPS / WSS 支持（rustls + ALPN HTTP/2） |
+
+### 网络与安全
+
+| Feature | 说明 |
+|---------|------|
+| `afast-tls` | HTTPS / WSS 支持（rustls + ALPN HTTP/2），独立 `[tls]` 配置段 |
+| `acme` | Let's Encrypt 自动证书申请与续期（HTTP-01 验证） |
 
 ### 微信生态
 

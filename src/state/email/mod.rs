@@ -87,6 +87,11 @@ impl Email {
         })
     }
 
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let config: EmailConfig = crate::state::extract(table, "email")?;
+        Self::from_config(&config)
+    }
+
     /// 使用默认账户发送 HTML 邮件
     ///
     /// - `to_addr`: 收件人地址

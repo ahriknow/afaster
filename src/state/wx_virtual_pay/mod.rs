@@ -128,20 +128,20 @@ impl WxVirtualPay {
             })?;
 
         // 检查微信 API 错误
-        if let Some(errcode) = response.get("errcode").and_then(|v| v.as_i64()) {
-            if errcode != 0 {
-                let errmsg = response
-                    .get("errmsg")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error")
-                    .to_string();
-                #[cfg(feature = "log")]
-                tracing::warn!(
-                    { code = 40601, msg = "WeChat virtual pay login error" },
-                    "{}", &errmsg
-                );
-                return Err(login_api(&errmsg));
-            }
+        if let Some(errcode) = response.get("errcode").and_then(|v| v.as_i64())
+            && errcode != 0
+        {
+            let errmsg = response
+                .get("errmsg")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error")
+                .to_string();
+            #[cfg(feature = "log")]
+            tracing::warn!(
+                { code = 40601, msg = "WeChat virtual pay login error" },
+                "{}", &errmsg
+            );
+            return Err(login_api(&errmsg));
         }
 
         let login_response: WxMiniLoginResponse =
@@ -184,15 +184,15 @@ impl WxVirtualPay {
     /// wx_virtual_pay.check_wx_err(&resp)?;
     /// ```
     pub fn check_wx_err(&self, resp: &serde_json::Value) -> crate::Result<()> {
-        if let Some(errcode) = resp.get("errcode").and_then(|v| v.as_i64()) {
-            if errcode == -41003 {
-                #[cfg(feature = "log")]
-                tracing::warn!(
-                    { code = 40602, msg = "WeChat login session expired" },
-                    "WeChat session_key expired (errcode: -41003)"
-                );
-                return Err(session_expired());
-            }
+        if let Some(errcode) = resp.get("errcode").and_then(|v| v.as_i64())
+            && errcode == -41003
+        {
+            #[cfg(feature = "log")]
+            tracing::warn!(
+                { code = 40602, msg = "WeChat login session expired" },
+                "WeChat session_key expired (errcode: -41003)"
+            );
+            return Err(session_expired());
         }
         Ok(())
     }
@@ -503,7 +503,7 @@ impl WxVirtualPay {
             if self.msg_secret.is_empty() {
                 #[cfg(feature = "log")]
                 tracing::error!("WxVirtualPay: encrypted message but msg_secret not configured");
-                return Err(err::decrypt_failed("msg_secret not configured").into());
+                return Err(err::decrypt_failed("msg_secret not configured"));
             }
             let json_str = notify::decrypt_wx_message(encrypt_b64, &self.msg_secret)?;
             body = serde_json::from_str(&json_str).map_err(|_e| {
@@ -606,5 +606,28 @@ impl WxVirtualPay {
                 ))
             }
         }
+    }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "wx_virtual_pay")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 微信虚拟支付配置扩展
+pub trait AFasterWxVirtualPayExt {
+    /// 链式配置微信虚拟支付
+    fn with_wx_virtual_pay(self, f: impl FnOnce(WxVirtualPay) -> WxVirtualPay) -> Self;
+}
+
+impl AFasterWxVirtualPayExt for crate::AFaster {
+    fn with_wx_virtual_pay(mut self, f: impl FnOnce(WxVirtualPay) -> WxVirtualPay) -> Self {
+        self.state.wx_virtual_pay = f(self.state.wx_virtual_pay);
+        self
     }
 }

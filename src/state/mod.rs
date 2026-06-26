@@ -2,6 +2,16 @@ mod callbacks;
 
 use serde::Deserialize;
 
+/// 从 toml::Table 中提取并反序列化指定 section
+fn extract<T: serde::de::DeserializeOwned>(table: &toml::Table, key: &str) -> crate::Result<T> {
+    table
+        .get(key)
+        .ok_or_else(|| crate::Error::custom(50001, format!("missing [{}]", key)))?
+        .clone()
+        .try_into()
+        .map_err(|e| crate::Error::custom(50001, format!("[{}] {}", key, e)))
+}
+
 #[cfg(feature = "clock")]
 pub mod clock;
 
@@ -74,6 +84,12 @@ pub mod memkv;
 #[cfg(any(feature = "socket-binary", feature = "socket-ws", feature = "sse"))]
 pub mod socket;
 
+#[cfg(feature = "acme")]
+pub mod acme;
+
+#[cfg(feature = "afast-tls")]
+pub mod tls;
+
 #[cfg(feature = "push")]
 pub mod push;
 
@@ -122,6 +138,8 @@ pub struct AppState {
     pub backend: Backend,
     #[cfg(any(feature = "db-postgres", feature = "db-sqlite", feature = "db-mysql"))]
     pub db: database::Database,
+    #[cfg(feature = "argon2-hash")]
+    pub argon2: argon2::Argon2Hasher,
     #[cfg(feature = "clock")]
     pub clock: clock::Clock,
     #[cfg(feature = "nonce")]
@@ -180,6 +198,10 @@ pub struct AppState {
     pub bloom: bloom::BloomFilter,
     #[cfg(any(feature = "socket-binary", feature = "socket-ws", feature = "sse"))]
     pub socket: socket::SocketManager,
+    #[cfg(feature = "acme")]
+    pub acme: acme::AcmeState,
+    #[cfg(feature = "afast-tls")]
+    pub tls: tls::Tls,
     #[cfg(feature = "push")]
     pub push: push::PushManager,
     #[cfg(feature = "scheduler")]
@@ -191,76 +213,7 @@ pub struct AppState {
     #[cfg(feature = "redis")]
     pub redis: redis::Redis,
     #[cfg(all(feature = "valkey", not(feature = "redis")))]
-    pub valkey: redis::Valkey,
-}
-
-/// 内部用于反序列化的临时结构
-#[derive(Deserialize)]
-struct ConfigFile {
-    backend: Backend,
-    #[cfg(feature = "db-postgres")]
-    postgres: database::PostgresConfig,
-    #[cfg(feature = "db-sqlite")]
-    sqlite: database::SqliteConfig,
-    #[cfg(feature = "db-mysql")]
-    mysql: database::MysqlConfig,
-    #[cfg(feature = "github-oauth2")]
-    github_oauth2: github_oauth2::GitHubOAuth2,
-    #[cfg(feature = "oss")]
-    oss: oss::Oss,
-    #[cfg(feature = "cos")]
-    cos: cos::Cos,
-    #[cfg(feature = "snow")]
-    snow: snow::SnowConfig,
-    #[cfg(feature = "jwt")]
-    token: token::Token,
-    #[cfg(feature = "wx-virtual-pay")]
-    wx_virtual_pay: wx_virtual_pay::WxVirtualPay,
-    #[cfg(feature = "wx-sec-check")]
-    wx_sec_check: wx_sec_check::WxSecCheck,
-    #[cfg(any(
-        feature = "wx-pay-h5",
-        feature = "wx-pay-native",
-        feature = "wx-pay-app",
-        feature = "wx-pay-mini",
-        feature = "wx-pay-js"
-    ))]
-    wx_pay: wx_pay::WxPay,
-    #[cfg(any(
-        feature = "wx-login-mini",
-        feature = "wx-login-app",
-        feature = "wx-login-web"
-    ))]
-    wxlogin: wxlogin::WxLogin,
-    #[cfg(feature = "wx-official")]
-    wx_official: wx_official::WxOfficial,
-    #[cfg(feature = "email")]
-    email: email::EmailConfig,
-    #[cfg(feature = "sms-ali")]
-    sms_ali: smsali::SmsAli,
-    #[cfg(feature = "sms-tencent")]
-    sms_tencent: smstencent::SmsTencent,
-    #[cfg(feature = "amap")]
-    amap: amap::Amap,
-    #[cfg(feature = "tmap")]
-    tmap: tmap::Tmap,
-    #[cfg(feature = "ali-pay-web")]
-    ali_pay: ali_pay::AliPay,
-    #[cfg(feature = "trace")]
-    tracing: trace::TracingConfig,
-    #[cfg(feature = "rate-limit")]
-    rate_limit: rate_limit::RateLimitModuleConfig,
-    #[cfg(feature = "serve")]
-    serve: serve::ServeConfig,
-    #[cfg(feature = "push")]
-    push: push::PushManager,
-    #[cfg(feature = "redis")]
-    redis: redis::RedisConfig,
-    #[cfg(all(feature = "valkey", not(feature = "redis")))]
-    valkey: redis::ValkeyConfig,
-    #[cfg(feature = "bloom")]
-    #[serde(default)]
-    bloom: bloom::BloomFilterConfig,
+    pub valkey: redis::Redis,
 }
 
 impl AppState {
@@ -268,183 +221,36 @@ impl AppState {
         let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
             crate::Error::custom(50001, format!("Failed to read config '{}': {}", path, e))
         })?;
-
-        #[allow(unused_mut)]
-        #[cfg(any(
-            feature = "wx-login-mini",
-            feature = "wx-login-app",
-            feature = "wx-login-web",
-            feature = "oss",
-            feature = "cos",
-            feature = "github-oauth2",
-            feature = "wx-virtual-pay",
-            feature = "wx-sec-check",
-            feature = "wx-pay-h5",
-            feature = "wx-pay-native",
-            feature = "wx-pay-app",
-            feature = "wx-pay-mini",
-            feature = "wx-pay-js",
-            feature = "sms-ali",
-            feature = "sms-tencent",
-            feature = "amap",
-            feature = "tmap",
-            feature = "ali-pay-web",
-            feature = "trace",
-            feature = "rate-limit",
-            feature = "serve",
-            feature = "redis",
-            feature = "valkey",
-            feature = "wx-official",
-            feature = "push",
-            feature = "db-postgres",
-            feature = "db-sqlite",
-            feature = "db-mysql",
-            feature = "bloom"
-        ))]
-        let mut config: ConfigFile = toml::from_str(&content).map_err(|e| {
+        let table: toml::Table = toml::from_str(&content).map_err(|e| {
             crate::Error::custom(50001, format!("Failed to parse config.toml: {}", e))
         })?;
 
-        #[cfg(not(any(
-            feature = "wx-login-mini",
-            feature = "wx-login-app",
-            feature = "wx-login-web",
-            feature = "oss",
-            feature = "cos",
-            feature = "github-oauth2",
-            feature = "wx-virtual-pay",
-            feature = "wx-sec-check",
-            feature = "wx-pay-h5",
-            feature = "wx-pay-native",
-            feature = "wx-pay-app",
-            feature = "wx-pay-mini",
-            feature = "wx-pay-js",
-            feature = "sms-ali",
-            feature = "sms-tencent",
-            feature = "amap",
-            feature = "tmap",
-            feature = "ali-pay-web",
-            feature = "trace",
-            feature = "rate-limit",
-            feature = "serve",
-            feature = "redis",
-            feature = "valkey",
-            feature = "wx-official",
-            feature = "push",
-            feature = "db-postgres",
-            feature = "db-sqlite",
-            feature = "db-mysql",
-            feature = "bloom"
-        )))]
-        let config: ConfigFile = toml::from_str(&content).map_err(|e| {
-            crate::Error::custom(50001, format!("Failed to parse config.toml: {}", e))
-        })?;
-
-        // 初始化 reqwest clients
-        #[cfg(any(
-            feature = "wx-login-mini",
-            feature = "wx-login-app",
-            feature = "wx-login-web"
-        ))]
-        {
-            config.wxlogin.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "wx-official")]
-        {
-            config.wx_official.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "oss")]
-        {
-            config.oss.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "cos")]
-        {
-            config.cos.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "github-oauth2")]
-        {
-            config.github_oauth2.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "wx-virtual-pay")]
-        {
-            config.wx_virtual_pay.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "wx-sec-check")]
-        {
-            config.wx_sec_check.client = reqwest::Client::new();
-        }
-        #[cfg(any(
-            feature = "wx-pay-h5",
-            feature = "wx-pay-native",
-            feature = "wx-pay-app",
-            feature = "wx-pay-mini",
-            feature = "wx-pay-js"
-        ))]
-        {
-            config.wx_pay.init()?;
-        }
-        #[cfg(feature = "sms-ali")]
-        {
-            config.sms_ali.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "sms-tencent")]
-        {
-            config.sms_tencent.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "amap")]
-        {
-            config.amap.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "tmap")]
-        {
-            config.tmap.client = reqwest::Client::new();
-        }
-        #[cfg(feature = "ali-pay-web")]
-        {
-            config.ali_pay.init()?;
-        }
-
-        // 初始化 Redis/Valkey
-        #[cfg(feature = "redis")]
-        let redis_client = redis::Redis::connect(&config.redis).await?;
-
-        #[cfg(all(feature = "valkey", not(feature = "redis")))]
-        let valkey_client = redis::Redis::connect(&config.valkey).await?;
-
-        // 初始化数据库连接池
-        #[cfg(any(feature = "db-postgres", feature = "db-sqlite", feature = "db-mysql"))]
-        let db = database::Database::connect(
-            #[cfg(feature = "db-postgres")]
-            &config.postgres,
-            #[cfg(feature = "db-sqlite")]
-            &config.sqlite,
-            #[cfg(feature = "db-mysql")]
-            &config.mysql,
-        )
-        .await?;
+        let backend = Backend::from_table(&table)?;
 
         let state = AppState {
-            backend: config.backend,
+            backend: backend.clone(),
             #[cfg(any(feature = "db-postgres", feature = "db-sqlite", feature = "db-mysql"))]
-            db,
+            db: database::Database::from_table(&table).await?,
+            #[cfg(feature = "argon2-hash")]
+            argon2: argon2::Argon2Hasher::new(),
             #[cfg(feature = "clock")]
             clock: clock::Clock::new(),
             #[cfg(feature = "nonce")]
             nonce: nonce::Nonce::new(),
             #[cfg(feature = "github-oauth2")]
-            github_oauth2: config.github_oauth2,
+            github_oauth2: github_oauth2::GitHubOAuth2::from_table(&table)?,
             #[cfg(feature = "oss")]
-            oss: config.oss,
+            oss: oss::Oss::from_table(&table)?,
             #[cfg(feature = "cos")]
-            cos: config.cos,
+            cos: cos::Cos::from_table(&table)?,
             #[cfg(feature = "snow")]
-            snow: snow::Snowflake::from_config(&config.snow),
+            snow: snow::Snowflake::from_table(&table)?,
             #[cfg(feature = "jwt")]
-            token: config.token,
+            token: token::Token::from_table(&table)?,
             #[cfg(feature = "wx-virtual-pay")]
-            wx_virtual_pay: config.wx_virtual_pay,
+            wx_virtual_pay: wx_virtual_pay::WxVirtualPay::from_table(&table)?,
             #[cfg(feature = "wx-sec-check")]
-            wx_sec_check: config.wx_sec_check,
+            wx_sec_check: wx_sec_check::WxSecCheck::from_table(&table)?,
             #[cfg(any(
                 feature = "wx-pay-h5",
                 feature = "wx-pay-native",
@@ -452,205 +258,58 @@ impl AppState {
                 feature = "wx-pay-mini",
                 feature = "wx-pay-js"
             ))]
-            wx_pay: config.wx_pay,
+            wx_pay: wx_pay::WxPay::from_table(&table)?,
             #[cfg(any(
                 feature = "wx-login-mini",
                 feature = "wx-login-app",
                 feature = "wx-login-web"
             ))]
-            wxlogin: config.wxlogin,
+            wxlogin: wxlogin::WxLogin::from_table(&table)?,
             #[cfg(feature = "wx-official")]
-            wx_official: config.wx_official,
+            wx_official: wx_official::WxOfficial::from_table(&table)?,
             #[cfg(feature = "push")]
-            push: {
-                let mut pm = config.push;
-                pm.init();
-                pm
-            },
+            push: push::PushManager::from_table(&table)?,
             #[cfg(feature = "email")]
-            email: email::Email::from_config(&config.email)?,
+            email: email::Email::from_table(&table)?,
             #[cfg(feature = "regex-util")]
             regex_util: regex::RegexUtil::new(),
             #[cfg(feature = "sms-ali")]
-            sms_ali: config.sms_ali,
+            sms_ali: smsali::SmsAli::from_table(&table)?,
             #[cfg(feature = "sms-tencent")]
-            sms_tencent: config.sms_tencent,
+            sms_tencent: smstencent::SmsTencent::from_table(&table)?,
             #[cfg(feature = "amap")]
-            amap: config.amap,
+            amap: amap::Amap::from_table(&table)?,
             #[cfg(feature = "tmap")]
-            tmap: config.tmap,
+            tmap: tmap::Tmap::from_table(&table)?,
             #[cfg(feature = "ali-pay-web")]
-            ali_pay: config.ali_pay,
+            ali_pay: ali_pay::AliPay::from_table(&table)?,
             #[cfg(feature = "trace")]
-            tracing: trace::init_tracing(&config.tracing).await?,
+            tracing: trace::TracingService::from_table(&table).await?,
             #[cfg(feature = "rbac")]
             rbac: None,
             #[cfg(feature = "memkv")]
             memkv: memkv::MemKV::new(),
             #[cfg(feature = "bloom")]
-            bloom: bloom::BloomFilter::from_config(&config.bloom),
+            bloom: bloom::BloomFilter::from_table(&table)?,
             #[cfg(any(feature = "socket-binary", feature = "socket-ws", feature = "sse"))]
             socket: socket::SocketManager::new(),
+            #[cfg(feature = "acme")]
+            acme: acme::AcmeState::from_table(&table, backend.port)?,
+            #[cfg(feature = "afast-tls")]
+            tls: tls::Tls::from_table(&table)?,
             #[cfg(feature = "scheduler")]
             scheduler: scheduler::Scheduler::new(),
             #[cfg(feature = "rate-limit")]
-            rate_limit_config: config.rate_limit,
+            rate_limit_config: rate_limit::RateLimitModuleConfig::from_table(&table)?,
             #[cfg(feature = "serve")]
-            serve: Some(serve::Serve::from_config(&config.serve, "./static")),
+            serve: Some(serve::Serve::from_table(&table)?),
             #[cfg(feature = "redis")]
-            redis: redis_client,
+            redis: redis::Redis::from_table(&table).await?,
             #[cfg(all(feature = "valkey", not(feature = "redis")))]
-            valkey: valkey_client,
+            valkey: redis::Redis::from_table(&table).await?,
         };
 
-        // 初始化 Scheduler 的 state 引用
-        #[cfg(feature = "scheduler")]
-        state.scheduler.init_state(state.clone()).await;
-
         Ok(state)
-    }
-
-    /// 链式配置 GitHubOAuth2
-    #[cfg(feature = "github-oauth2")]
-    pub fn with_github_oauth2(
-        mut self,
-        f: impl FnOnce(github_oauth2::GitHubOAuth2) -> github_oauth2::GitHubOAuth2,
-    ) -> Self {
-        self.github_oauth2 = f(self.github_oauth2);
-        self
-    }
-
-    /// 链式配置 WxVirtualPay
-    #[cfg(feature = "wx-virtual-pay")]
-    pub fn with_wx_virtual_pay(
-        mut self,
-        f: impl FnOnce(wx_virtual_pay::WxVirtualPay) -> wx_virtual_pay::WxVirtualPay,
-    ) -> Self {
-        self.wx_virtual_pay = f(self.wx_virtual_pay);
-        self
-    }
-
-    /// 链式配置 WxPay
-    #[cfg(any(
-        feature = "wx-pay-h5",
-        feature = "wx-pay-native",
-        feature = "wx-pay-app",
-        feature = "wx-pay-mini",
-        feature = "wx-pay-js"
-    ))]
-    pub fn with_wx_pay(mut self, f: impl FnOnce(wx_pay::WxPay) -> wx_pay::WxPay) -> Self {
-        self.wx_pay = f(self.wx_pay);
-        self
-    }
-
-    /// 链式配置 WxLogin
-    #[cfg(any(
-        feature = "wx-login-mini",
-        feature = "wx-login-app",
-        feature = "wx-login-web"
-    ))]
-    pub fn with_wxlogin(mut self, f: impl FnOnce(wxlogin::WxLogin) -> wxlogin::WxLogin) -> Self {
-        self.wxlogin = f(self.wxlogin);
-        self
-    }
-
-    /// 链式配置 WxOfficial
-    #[cfg(feature = "wx-official")]
-    pub fn with_wx_official(
-        mut self,
-        f: impl FnOnce(wx_official::WxOfficial) -> wx_official::WxOfficial,
-    ) -> Self {
-        self.wx_official = f(self.wx_official);
-        self
-    }
-
-    /// 链式配置阿里云短信
-    #[cfg(feature = "sms-ali")]
-    pub fn with_sms_ali(mut self, f: impl FnOnce(smsali::SmsAli) -> smsali::SmsAli) -> Self {
-        self.sms_ali = f(self.sms_ali);
-        self
-    }
-
-    /// 链式配置腾讯云短信
-    #[cfg(feature = "sms-tencent")]
-    pub fn with_sms_tencent(
-        mut self,
-        f: impl FnOnce(smstencent::SmsTencent) -> smstencent::SmsTencent,
-    ) -> Self {
-        self.sms_tencent = f(self.sms_tencent);
-        self
-    }
-
-    /// 链式配置支付宝
-    #[cfg(feature = "ali-pay-web")]
-    pub fn with_ali_pay(mut self, f: impl FnOnce(ali_pay::AliPay) -> ali_pay::AliPay) -> Self {
-        self.ali_pay = f(self.ali_pay);
-        self
-    }
-
-    /// 设置 RBAC 实例
-    #[cfg(feature = "rbac")]
-    pub fn set_rbac(mut self, rbac: rbac::Rbac) -> Self {
-        self.rbac = Some(rbac);
-        self
-    }
-
-    /// 设置 MemKV 实例
-    #[cfg(feature = "memkv")]
-    pub fn with_memkv(mut self, memkv: memkv::MemKV) -> Self {
-        self.memkv = memkv;
-        self
-    }
-
-    /// 链式配置 BloomFilter
-    #[cfg(feature = "bloom")]
-    pub fn with_bloom(mut self, f: impl FnOnce(bloom::BloomFilter) -> bloom::BloomFilter) -> Self {
-        self.bloom = f(self.bloom);
-        self
-    }
-
-    /// 链式注册定时任务
-    #[cfg(feature = "scheduler")]
-    pub fn with_scheduler(
-        mut self,
-        f: impl FnOnce(scheduler::Scheduler) -> scheduler::Scheduler,
-    ) -> Self {
-        self.scheduler = f(self.scheduler);
-        self
-    }
-
-    /// 批量注册定时任务
-    #[cfg(feature = "scheduler")]
-    pub fn schedulers(
-        mut self,
-        fs: Vec<Box<dyn FnOnce(scheduler::Scheduler) -> scheduler::Scheduler>>,
-    ) -> Self {
-        for f in fs {
-            self.scheduler = f(self.scheduler);
-        }
-        self
-    }
-
-    /// 获取 Socket 连接管理器引用
-    #[cfg(any(feature = "socket-binary", feature = "socket-ws", feature = "sse"))]
-    pub fn socket(&self) -> &socket::SocketManager {
-        &self.socket
-    }
-
-    /// 注册自定义 TraceStore
-    ///
-    /// 用于替换默认的 SQLite 存储后端。传入实现了 `TraceStore` trait 的类型即可。
-    ///
-    /// # 示例
-    /// ```ignore
-    /// let my_store = MyCustomStore::new().await?;
-    /// let state = AppState::new("config.toml".into()).await?
-    ///     .set_trace_store(my_store);
-    /// ```
-    #[cfg(feature = "trace")]
-    pub fn set_trace_store(mut self, store: impl trace::TraceStore) -> Self {
-        self.tracing.store = std::sync::Arc::new(store);
-        self
     }
 }
 
@@ -658,25 +317,10 @@ impl AppState {
 pub struct Backend {
     pub host: String,
     pub port: u16,
-    #[cfg(feature = "afast-tls")]
-    #[serde(default)]
-    pub tls: Option<TlsBackend>,
 }
 
-/// TLS 后端配置
-#[cfg(feature = "afast-tls")]
-#[derive(Clone, Deserialize)]
-pub struct TlsBackend {
-    /// 监听端口（默认 443）
-    #[serde(default = "default_tls_port")]
-    pub port: u16,
-    /// PEM 证书链文件路径
-    pub cert_path: String,
-    /// PEM 私钥文件路径
-    pub key_path: String,
-}
-
-#[cfg(feature = "afast-tls")]
-fn default_tls_port() -> u16 {
-    443
+impl Backend {
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        extract(table, "backend")
+    }
 }

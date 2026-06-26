@@ -10,6 +10,7 @@ mod service;
 
 use afaster::Result;
 use afaster::rbac::{Rbac, RbacStore, Role};
+use afaster::{AFasterAcmeExt, AFasterRbacExt};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -339,7 +340,27 @@ async fn main() {
         .service(service::admin::build_service())
         .service(service::bin_chat::build_service())
         .service(service::ws_chat::build_service("/ws/chat"))
-        .service(service::http_api::build_service());
+        .service(service::http_api::build_service())
+        .with_acme(|acme| {
+            acme.with_on_cert_obtained(
+                |(state, _event): (afaster::AppState, afaster::acme::CertEvent)| async move {
+                    state.tls.reload();
+                    Ok(())
+                },
+            )
+            .with_on_cert_renewed(
+                |(state, _event): (afaster::AppState, afaster::acme::CertEvent)| async move {
+                    state.tls.reload();
+                    Ok(())
+                },
+            )
+            .with_on_cert_failed(
+                |(_state, event): (afaster::AppState, afaster::acme::CertErrorEvent)| async move {
+                    eprintln!("ACME 证书失败: {:?} - {}", event.domains, event.error);
+                    Ok(())
+                },
+            )
+        });
 
     println!("  🚀 博客系统启动中...");
     println!("  📡 HTTP Binary 端口: 8080");

@@ -115,6 +115,12 @@ struct TencentApiError {
 
 // ── 实现 ────────────────────────────────────────────────────
 
+impl Default for SmsTencent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SmsTencent {
     pub fn new() -> Self {
         SmsTencent {
@@ -351,5 +357,30 @@ impl SmsTencent {
     ) -> Self {
         self.sms_report_callback = Some(cb.into_callback());
         self
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 腾讯云短信配置扩展
+pub trait AFasterSmsTencentExt {
+    /// 链式配置腾讯云短信
+    fn with_sms_tencent(self, f: impl FnOnce(SmsTencent) -> SmsTencent) -> Self;
+}
+
+impl AFasterSmsTencentExt for crate::AFaster {
+    fn with_sms_tencent(mut self, f: impl FnOnce(SmsTencent) -> SmsTencent) -> Self {
+        self.state.sms_tencent = f(self.state.sms_tencent);
+        self
+    }
+}
+
+impl SmsTencent {
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "sms_tencent")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
     }
 }

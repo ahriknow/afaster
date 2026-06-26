@@ -3,13 +3,33 @@
 # ═══════════════════════════════════════════════════════════════
 [backend]
 host = "0.0.0.0"  # 绑定地址
-port = 5000       # 监听端口
+port = 6080       # 监听端口
 
-# TLS / HTTPS（可选, Feature: afast-tls）
-# [backend.tls]
-# port = 443                          # HTTPS 监听端口, 默认 443
-# cert_path = "/etc/ssl/cert.pem"     # PEM 证书链文件路径
-# key_path = "/etc/ssl/key.pem"       # PEM 私钥文件路径
+# ═══════════════════════════════════════════════════════════════
+#  TLS / HTTPS（可选, Feature: afast-tls）
+#  使用 ACME 时, cert_path / key_path 指向 [acme].cache_dir 下的文件
+# ═══════════════════════════════════════════════════════════════
+# [tls]
+# port = 6443                                   # HTTPS 监听端口, 默认 443
+# cert_path = "./acme_cache/fullchain.pem"      # PEM 证书链文件路径
+# key_path = "./acme_cache/privkey.pem"         # PEM 私钥文件路径
+
+# ═══════════════════════════════════════════════════════════════
+#  ACME 自动证书管理 (Let's Encrypt)
+#  Feature: acme
+#
+#  使用 HTTP-01 验证方式，通过 afast HTTP 服务的
+#  /.well-known/acme-challenge/* 路由响应验证请求。
+#  ACME 模块自身不启动任何网络监听。
+#  HTTPS 端口使用 [tls].port 配置。
+# ═══════════════════════════════════════════════════════════════
+[acme]
+domains = ["a.domain.com", "b.domain.com"]   # 申请证书的域名列表 (多域名生成一个 SAN 证书)
+contact = "mailto:email@domain.com"          # 联系邮箱 (可选, 用于证书到期提醒)
+cache_dir = "./acme_cache"                   # 证书缓存目录, 默认 ./acme_cache
+# staging = false                            # 是否使用 Let's Encrypt 测试环境, 默认 false
+# renewal_days = 10                          # 到期前多少天自动续期, 默认 10
+# allow_non_80 = false                       # 允许非 80 端口, 默认 false (backend.port 必须为 80), 设为 true 时需自行配置反向代理将 80 转发到服务端口
 
 # ═══════════════════════════════════════════════════════════════
 #  JWT 令牌

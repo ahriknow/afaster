@@ -124,7 +124,7 @@ impl Scheduler {
         let schedule = Schedule::from_str(cron_expr).map_err(|e| {
             crate::Error::custom(
                 51501,
-                &format!("Invalid cron expression '{}': {}", cron_expr, e),
+                format!("Invalid cron expression '{}': {}", cron_expr, e),
             )
         })?;
 
@@ -274,13 +274,7 @@ impl Scheduler {
                 }
             };
 
-            loop {
-                // 计算下一次触发时间
-                let next = match schedule.upcoming(chrono::Utc).next() {
-                    Some(t) => t,
-                    None => break,
-                };
-
+            while let Some(next) = schedule.upcoming(chrono::Utc).next() {
                 let delay = (next - chrono::Utc::now()).to_std().unwrap_or_default();
 
                 // 等待到触发时间，同时监听取消信号
@@ -329,10 +323,8 @@ impl Scheduler {
 
                 // 检查是否达到自动删除次数
                 let current_times = times.load(Ordering::Acquire);
-                if let Some(limit) = auto_remove {
-                    if current_times >= limit {
-                        break;
-                    }
+                if auto_remove.is_some_and(|limit| current_times >= limit) {
+                    break;
                 }
 
                 // 递增执行次数
@@ -353,12 +345,10 @@ impl Scheduler {
                     running.fetch_sub(1, Ordering::AcqRel);
 
                     // 检查是否需要自动删除
-                    if let Some(limit) = auto_remove {
-                        if exec_times >= limit {
-                            let _ = cancel_tx_clone.send(true);
-                            let mut tasks = tasks_clone.lock().await;
-                            tasks.remove(&name_clone);
-                        }
+                    if auto_remove.is_some_and(|limit| exec_times >= limit) {
+                        let _ = cancel_tx_clone.send(true);
+                        let mut tasks = tasks_clone.lock().await;
+                        tasks.remove(&name_clone);
                     }
                 });
             }
@@ -375,5 +365,32 @@ impl Scheduler {
 impl Default for Scheduler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 定时任务配置扩展
+pub trait AFasterSchedulerExt {
+    /// 链式注册定时任务
+    fn with_scheduler(self, f: impl FnOnce(Scheduler) -> Scheduler) -> Self;
+
+    /// 批量注册定时任务
+    fn schedulers(self, fs: Vec<Box<dyn FnOnce(Scheduler) -> Scheduler>>) -> Self;
+}
+
+impl AFasterSchedulerExt for crate::AFaster {
+    fn with_scheduler(mut self, f: impl FnOnce(Scheduler) -> Scheduler) -> Self {
+        self.state.scheduler = f(self.state.scheduler);
+        self
+    }
+
+    fn schedulers(mut self, fs: Vec<Box<dyn FnOnce(Scheduler) -> Scheduler>>) -> Self {
+        for f in fs {
+            self.state.scheduler = f(self.state.scheduler);
+        }
+        self
     }
 }

@@ -139,16 +139,16 @@ impl SenderKind {
     }
 
     /// 仅发送二进制数据
-    async fn send_binary(&self, data: &[u8]) -> Result<(), String> {
+    async fn send_binary(&self, _data: &[u8]) -> Result<(), String> {
         match self {
             #[cfg(feature = "socket-binary")]
             SenderKind::Binary(tx) => tx
-                .send(data.to_vec())
+                .send(_data.to_vec())
                 .await
                 .map_err(|_| "channel closed".to_string()),
             #[cfg(feature = "socket-ws")]
             SenderKind::Ws(ws) => ws
-                .send_binary(data.to_vec())
+                .send_binary(_data.to_vec())
                 .await
                 .map_err(|e| e.to_string()),
             #[cfg(feature = "sse")]
@@ -185,6 +185,7 @@ impl SenderKind {
     async fn send_event(&self, event: &str, data: &serde_json::Value) -> Result<(), String> {
         match self {
             SenderKind::Sse(sse) => sse.send_event(event, data).await.map_err(|e| e.to_string()),
+            #[allow(unreachable_patterns)]
             _ => Err("send_event only supported for SSE connections".to_string()),
         }
     }

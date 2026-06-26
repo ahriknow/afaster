@@ -39,6 +39,7 @@
 - [认证与安全]()
   - [JWT 令牌](./auth/jwt.md)
   - [HTTPS / WSS](./auth/tls.md)
+  - [ACME 自动证书](./auth/acme.md)
   - [Argon2 密码哈希](./auth/argon2.md)
   - [RBAC 权限管理](./auth/rbac.md)
   - [限流](./auth/rate-limit.md)

@@ -126,6 +126,11 @@ impl Serve {
         }
     }
 
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let config: ServeConfig = crate::state::extract(table, "serve")?;
+        Ok(Self::from_config(&config, "./static"))
+    }
+
     /// 设置 URL 前缀
     pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.prefix = prefix.into();
@@ -159,10 +164,10 @@ impl Serve {
         }
 
         // SPA 模式: 尝试 index.html
-        if self.spa {
-            if let Some(result) = self.read_file("index.html") {
-                return Some(result);
-            }
+        if self.spa
+            && let Some(result) = self.read_file("index.html")
+        {
+            return Some(result);
         }
 
         None
@@ -277,4 +282,37 @@ fn mime_type(path: &str) -> String {
     }
 
     "application/octet-stream".to_string()
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 静态文件服务配置扩展
+pub trait AFasterServeExt {
+    /// 设置静态文件服务
+    ///
+    /// # 示例
+    ///
+    /// ```rust,no_run
+    /// // 运行时目录模式
+    /// AFaster::new("config.toml".into()).await?
+    ///     .with_serve(afaster::serve::Serve::from_dir("./dist"))
+    ///     .run().await;
+    ///
+    /// // 编译期嵌入模式
+    /// AFaster::new("config.toml".into()).await?
+    ///     .with_serve(afaster::serve::Serve::from_embedded(
+    ///         include_dir!("$CARGO_MANIFEST_DIR/dist")
+    ///     ))
+    ///     .run().await;
+    /// ```
+    fn with_serve(self, serve: Serve) -> Self;
+}
+
+impl AFasterServeExt for crate::AFaster {
+    fn with_serve(mut self, serve: Serve) -> Self {
+        self.state.serve = Some(serve);
+        self
+    }
 }

@@ -229,3 +229,20 @@ impl Rbac {
         self.store.get_role_id(name).await
     }
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster RBAC 配置扩展
+pub trait AFasterRbacExt {
+    /// 设置 RBAC 实例
+    fn set_rbac(self, rbac: Rbac) -> Self;
+}
+
+impl AFasterRbacExt for crate::AFaster {
+    fn set_rbac(mut self, rbac: Rbac) -> Self {
+        self.state.rbac = Some(rbac);
+        self
+    }
+}

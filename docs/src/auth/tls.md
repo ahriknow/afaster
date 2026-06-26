@@ -19,27 +19,29 @@ Feature: `afast-tls` | 依赖: `rustls` + `tokio-rustls` + `rustls-pemfile`
 host = "0.0.0.0"
 port = 5000             # HTTP 端口
 
-[backend.tls]
-port = 443              # HTTPS 端口，默认 443
+[tls]
+port = 6443                       # HTTPS 端口，默认 443
 cert_path = "/etc/ssl/cert.pem"   # PEM 证书链文件路径
 key_path = "/etc/ssl/key.pem"     # PEM 私钥文件路径
 ```
+
+> **注意**：TLS 配置已从 `[backend.tls]` 独立为顶层 `[tls]` 配置段。配合 `acme` feature 使用时，证书路径指向 ACME 缓存目录即可。
 
 ## 使用方式
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.3", features = ["afast-http", "afast-ws", "afast-tls"] }
+afaster = { version = "0.0.4", features = ["afast-http", "afast-ws", "afast-tls"] }
 ```
 
-无需修改代码，框架在 `run()` 时自动检测 `[backend.tls]` 配置，存在则启动 HTTPS 服务器：
+无需修改代码，框架在 `run()` 时自动检测 `[tls]` 配置，存在则启动 HTTPS 服务器：
 
 ```rust,no_run
 use afaster::AFaster;
 
 #[tokio::main]
 async fn main() {
-    // config.toml 中配置了 [backend.tls] 时自动启用 HTTPS
+    // config.toml 中配置了 [tls] 时自动启用 HTTPS
     AFaster::new("config.toml".to_string()).await
         .unwrap()
         .run()

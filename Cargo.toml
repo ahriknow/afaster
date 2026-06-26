@@ -1,6 +1,6 @@
 [package]
 name = "afaster"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -13,7 +13,7 @@ categories = ["web-programming", "asynchronous"]
 members = ["examples/email", "examples/amap", "examples/tmap", "examples/redis", "examples/scheduler", "examples/excel", "examples/pdf", "examples/image", "examples/file", "examples/argon2", "example"]
 
 [workspace.package]
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -21,7 +21,7 @@ repository = "https://github.com/ahriknow/afaster"
 
 [workspace.dependencies]
 afaster = { path = ".", default-features = false }
-afast = { version = "0.1.18" }
+afast = { version = "0.1.22"}
 afastdata = { version = "0.0.10" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1" }
@@ -42,7 +42,7 @@ default = []
 jwt = ["jsonwebtoken"]
 log = ["tracing", "tracing-appender", "tracing-subscriber"]
 trace = ["log", "afast/hook", "afast-ordinary-http", "sse", "dep:rand"]
-trace-sqlite = ["trace", "db-sqlite"]
+trace-sqlite = ["trace", "sqlx/sqlite"]
 trace-http = ["trace", "reqwest"]
 trace-tcp = ["trace"]
 trace-receive-http = ["trace", "afast-http"]
@@ -98,6 +98,7 @@ excel = ["dep:calamine", "dep:rust_xlsxwriter", "dep:serde_json", "dep:csv"]
 pdf = ["dep:printpdf", "dep:allsorts"]
 image = ["dep:image", "dep:imageproc", "dep:ab_glyph"]
 file = []
+acme = ["dep:rustls-acme", "dep:rustls", "dep:rcgen", "dep:p256", "dep:futures-util", "dep:rand", "dep:webpki-roots", "dep:x509-certificate", "afast-ordinary-http", "log"]
 afast-ts = ["afast/ts"]
 afast-js = ["afast/js"]
 afast-ws = ["afast/ws"]
@@ -159,3 +160,9 @@ sha2-v10 = { package = "sha2", version = "0.10", features = ["oid"], optional = 
 argon2 = { version = "0.5", optional = true }
 mime_guess = { version = "2", optional = true }
 include_dir = { version = "0.7", optional = true, features = ["glob"] }
+rustls-acme = { version = "0.15", optional = true, features = ["tokio"] }
+rustls = { version = "0.23", optional = true, features = ["ring"] }
+rcgen = { version = "0.13", optional = true }
+p256 = { version = "0.13", features = ["ecdsa"], optional = true }
+futures-util = { version = "0.3", optional = true }
+webpki-roots = { version = "0.26", optional = true }

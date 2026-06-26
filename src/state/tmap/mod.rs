@@ -61,6 +61,12 @@ impl TmapResponse {
 
 // ── 实现 ──────────────────────────────────────────────────────
 
+impl Default for Tmap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Tmap {
     pub fn new() -> Self {
         Tmap {
@@ -443,5 +449,11 @@ impl Tmap {
             &[("locations", locations), ("type", r#type)],
         )
         .await
+    }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "tmap")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
     }
 }

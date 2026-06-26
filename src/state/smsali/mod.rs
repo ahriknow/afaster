@@ -69,6 +69,12 @@ pub struct AliSmsResponse {
 
 // ── 实现 ────────────────────────────────────────────────────
 
+impl Default for SmsAli {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SmsAli {
     pub fn new() -> Self {
         SmsAli {
@@ -269,4 +275,29 @@ fn uuid_v4() -> String {
         .unwrap()
         .as_nanos();
     format!("{:032x}", t)
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 阿里云短信配置扩展
+pub trait AFasterSmsAliExt {
+    /// 链式配置阿里云短信
+    fn with_sms_ali(self, f: impl FnOnce(SmsAli) -> SmsAli) -> Self;
+}
+
+impl AFasterSmsAliExt for crate::AFaster {
+    fn with_sms_ali(mut self, f: impl FnOnce(SmsAli) -> SmsAli) -> Self {
+        self.state.sms_ali = f(self.state.sms_ali);
+        self
+    }
+}
+
+impl SmsAli {
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "sms_ali")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
+    }
 }

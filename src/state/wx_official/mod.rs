@@ -641,7 +641,7 @@ impl WxOfficial {
         let redirect_uri = self.mp_redirect_uri();
         let mut url = format!(
             "https://open.weixin.qq.com/connect/oauth2/authorize?appid={}&redirect_uri={}&response_type=code&scope={}",
-            self.app_id, &redirect_uri, scope
+            self.app_id, redirect_uri, scope
         );
         if let Some(s) = state {
             url.push_str(&format!("&state={}", s));
@@ -1015,4 +1015,29 @@ pub struct WxMpLoginResult {
     pub scope: String,
     pub unionid: Option<String>,
     pub userinfo: Option<WxUserInfo>,
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 微信公众号配置扩展
+pub trait AFasterWxOfficialExt {
+    /// 链式配置微信公众号
+    fn with_wx_official(self, f: impl FnOnce(WxOfficial) -> WxOfficial) -> Self;
+}
+
+impl AFasterWxOfficialExt for crate::AFaster {
+    fn with_wx_official(mut self, f: impl FnOnce(WxOfficial) -> WxOfficial) -> Self {
+        self.state.wx_official = f(self.state.wx_official);
+        self
+    }
+}
+
+impl WxOfficial {
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "wx_official")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
+    }
 }

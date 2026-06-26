@@ -7,7 +7,7 @@
 ## Feature
 
 ```toml
-afaster = { version = "0.0.3", default-features = false, features = ["rate-limit"] }
+afaster = { version = "0.0.4", default-features = false, features = ["rate-limit"] }
 ```
 
 ## 配置

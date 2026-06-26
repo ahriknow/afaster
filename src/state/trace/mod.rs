@@ -167,6 +167,11 @@ impl TracingService {
         self.broadcast.subscribe()
     }
 
+    pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let config: TracingConfig = crate::state::extract(table, "tracing")?;
+        init_tracing(&config).await
+    }
+
     /// 上报子 span（handler 内部调用，用于构建多层 trace 链路）
     pub async fn report_child_span(
         &self,
@@ -942,4 +947,24 @@ fn hex_encode(bytes: &[u8]) -> String {
         s.push(HEX[(b & 0x0f) as usize] as char);
     }
     s
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster 链路追踪配置扩展
+pub trait AFasterTraceExt {
+    /// 注册自定义 TraceStore
+    ///
+    /// 替换默认的 SQLite 存储。未注册时使用配置文件 `[tracing].db_path`。
+    /// 两者都未配置时 `run()` 将 panic。
+    fn set_trace_store(self, store: impl TraceStore + 'static) -> Self;
+}
+
+impl AFasterTraceExt for crate::AFaster {
+    fn set_trace_store(mut self, store: impl TraceStore + 'static) -> Self {
+        self.state.tracing.store = std::sync::Arc::new(store);
+        self
+    }
 }

@@ -19,6 +19,7 @@ afaster = { workspace = true, features = [
     "log",
     "afast-ws",
     "afast-http",
+    "afast-tls",
     "afast-ts",
     "afast-js",
     "afast-kt",
@@ -27,6 +28,7 @@ afaster = { workspace = true, features = [
     "trace",
     "afast-code",
     "trace-sqlite",
+    "acme",
 ] }
 afast = { workspace = true }
 afastdata = { workspace = true }

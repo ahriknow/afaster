@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.0.4]
+
+### Added
+
+- **ACME**: 新增 `acme` feature — 自动 HTTPS 证书管理（Let's Encrypt），支持 HTTP-01 验证
+- **ACME**: `config.toml` 新增 `[acme]` 配置段，支持域名列表、联系邮箱、缓存目录、测试环境、续期天数
+- **ACME**: 支持 `with_on_cert_obtained` / `with_on_cert_renewed` / `with_on_cert_failed` 回调
+- **ACME**: 证书续期后台任务 — 立即检查 + 每 24 小时检查一次，到期前 `renewal_days` 天自动续期
+- **ACME**: 首次申请成功后自动启动续期任务
+- **TLS**: 从 `backend` 配置独立为 `[tls]` 模块，支持证书热重载（`state.tls.reload()`）
+- **TLS**: 新增 `afast-tls` feature — HTTPS / WSS 支持，基于 rustls 实现
+
+### Changed
+
+- **架构**: `impl AFaster` 拆分 — 各模块的构建方法移至对应子模块，通过 extension trait 实现
+- **架构**: `AFaster` 结构体字段改为 `pub(crate)`，子模块可直接访问
+- **架构**: `AppState::new` 重构 — 每个模块新增 `from_table(&toml::Table)` 方法，自行从 TOML 提取配置并初始化
+- **架构**: 移除 `ConfigFile` 中间结构体，`AppState::new` 直接通过 `from_table` 组装
+- **架构**: 移除 `AppState` 上的 `with_*` / `set_*` 中间方法，AFaster extension trait 直接操作 `self.state` 字段
+- **架构**: Scheduler `init_state` 从 `AppState::new` 移至 `AFaster::run()`，打破循环依赖
+- **错误码**: 重新分配所有模块错误码（`XYYZZ` 格式），修复冲突，新增 ACME (31)、TLS (32)、链路追踪 (30)、定时任务 (35) 等模块编号
+- **错误码**: 腾讯云短信从 11 拆出独立编号 17
+- **错误码**: Excel 从 16 拆出独立编号 18
+- **错误码**: 数据库从 09 拆出独立编号 25
+
 ## [0.0.3]
 
 ### Added

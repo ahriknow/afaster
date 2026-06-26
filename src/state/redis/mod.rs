@@ -103,6 +103,11 @@ impl Redis {
         })
     }
 
+    pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let config: RedisConfig = crate::state::extract(table, "redis")?;
+        Self::connect(&config).await
+    }
+
     /// 获取异步连接
     async fn conn(&self) -> crate::Result<redis::aio::MultiplexedConnection> {
         let mut conn = self

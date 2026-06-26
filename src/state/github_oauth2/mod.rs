@@ -187,10 +187,11 @@ impl GitHubOAuth2 {
     /// 生成 GitHub OAuth2 授权 URL
     ///
     /// # 参数
-    /// - `state`: 可选的 state 参数, 用于防止 CSRF 攻击
+    /// - `state`: 可选的 state 参数，用于防止 CSRF 攻击
     ///
     /// # 返回
     /// - 授权 URL 字符串
+    ///
     /// 拼接完整的 redirect_uri
     pub fn redirect_uri(&self) -> String {
         format!(
@@ -455,5 +456,28 @@ impl GitHubOAuth2 {
     /// 是否启用了内置 state 验证
     pub fn is_verify_state(&self) -> bool {
         self.verify_state
+    }
+
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let mut instance: Self = crate::state::extract(table, "github_oauth2")?;
+        instance.client = reqwest::Client::new();
+        Ok(instance)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  AFaster 构建器扩展
+// ═══════════════════════════════════════════════════════════════
+
+/// AFaster GitHub OAuth2 配置扩展
+pub trait AFasterGitHubOAuth2Ext {
+    /// 链式配置 GitHub OAuth2
+    fn with_github_oauth2(self, f: impl FnOnce(GitHubOAuth2) -> GitHubOAuth2) -> Self;
+}
+
+impl AFasterGitHubOAuth2Ext for crate::AFaster {
+    fn with_github_oauth2(mut self, f: impl FnOnce(GitHubOAuth2) -> GitHubOAuth2) -> Self {
+        self.state.github_oauth2 = f(self.state.github_oauth2);
+        self
     }
 }

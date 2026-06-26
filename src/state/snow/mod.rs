@@ -73,6 +73,11 @@ impl Snowflake {
         }
     }
 
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let config: SnowConfig = crate::state::extract(table, "snow")?;
+        Ok(Self::from_config(&config))
+    }
+
     pub async fn next_id(&self) -> i64 {
         let mut inner = self.inner.lock().await;
         let mut timestamp = Self::current_time_millis();
