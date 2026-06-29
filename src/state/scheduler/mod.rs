@@ -265,13 +265,16 @@ impl Scheduler {
                 tasks.insert(task_name.clone(), entry);
             }
 
-            // 获取 state
-            let state = {
-                let s = state_ref.lock().await;
-                match s.as_ref() {
-                    Some(s) => s.clone(),
-                    None => return,
+            // 获取 state（等待 init_state 完成）
+            let state = loop {
+                {
+                    let s = state_ref.lock().await;
+                    if let Some(s) = s.as_ref() {
+                        break s.clone();
+                    }
                 }
+                // state 尚未初始化，等 10ms 后重试
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             };
 
             while let Some(next) = schedule.upcoming(chrono::Utc).next() {

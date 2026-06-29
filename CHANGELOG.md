@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.6]
+
+### Added
+
+- **ACME**: 新增域名变更检测 — 从缓存证书的 SAN (Subject Alternative Name) 扩展中提取 DNS 域名，与当前配置的域名集合对比。若有新增或变更的域名则自动重新申请证书；仅减少域名不触发重新申请
+- **ACME**: 启动时立即打印 ACME 状态日志（`debug` 级别），明确告知用户证书缓存状态和后续动作
+
+### Fixed
+
+- **ACME**: 修复 SAN 域名解析 DER 解码 bug — `extract_san_domains` 原先未解析外层 SEQUENCE 包装，导致始终返回空域名列表，误触发无限重新申请
+- **ACME**: 启动日志级别从 `info!` 改为 `debug!` — 适配框架 stdout 层仅输出 DEBUG 级别的设计，确保终端可见
+
+### Changed
+
+- **Scheduler**: state 初始化等待逻辑优化 — 从一次性检查改为循环重试（每 100ms 检查一次），避免因 `init_state` 未完成导致任务被跳过
+- **AFaster**: 新增 `get_state()` 方法，允许外部获取 `AppState` 引用
+
 ## [0.0.5]
 
 ### Added

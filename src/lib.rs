@@ -231,6 +231,11 @@ impl AFaster {
         })
     }
 
+    // 获取系统 AppState
+    pub fn get_state(self) -> AppState {
+        self.state
+    }
+
     /// 设置任意类型的全局状态
     #[cfg(feature = "ext")]
     pub fn set_state(mut self, state: impl std::any::Any + Send + Sync) -> Self {

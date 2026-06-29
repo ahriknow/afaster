@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -560,7 +560,7 @@ impl AcmeState {
 
     /// 启动证书续期后台任务
     ///
-    /// 立即检查一次证书是否需要续期，之后每 24 小时检查一次。
+    /// 立即检查一次证书是否需要续期（到期或域名变更），之后每 24 小时检查一次。
     /// 续期成功后调用 `on_cert_renewed` 回调（如果已注册），
     /// 用户可在回调中调用 `state.tls.reload()` 触发 HTTPS 热重载。
     pub fn spawn_renewal_task(&self, state: crate::AppState) {
@@ -571,35 +571,68 @@ impl AcmeState {
         tokio::spawn(async move {
             loop {
                 if acme.has_cached_certs() {
-                    match check_cert_expiry(&acme.cert_path(), renewal_days).await {
+                    // 检查是否因到期需要续期
+                    let need_renew = match check_cert_expiry(&acme.cert_path(), renewal_days).await
+                    {
                         Ok(true) => {
                             #[cfg(feature = "log")]
-                            tracing::info!("ACME: 证书即将到期，开始续期...");
-
-                            let _ = tokio::fs::remove_file(acme.cert_path()).await;
-                            let _ = tokio::fs::remove_file(acme.key_path()).await;
-
-                            match acme.obtain_certificates().await {
-                                Ok((cert_path, key_path)) => {
-                                    #[cfg(feature = "log")]
-                                    tracing::info!("ACME: 续期成功");
-                                    acme.invoke_cert_renewed(&state, cert_path, key_path).await;
-                                }
-                                Err(e) => {
-                                    #[cfg(feature = "log")]
-                                    tracing::error!("ACME: 续期失败: {}", e);
-                                    acme.invoke_cert_failed(&state, &e.to_string()).await;
-                                }
-                            }
+                            tracing::info!("ACME: 证书即将到期，需要续期");
+                            true
                         }
-                        Ok(false) => {
-                            #[cfg(feature = "log")]
-                            tracing::debug!("ACME: 证书有效，无需续期");
-                        }
+                        Ok(false) => false,
                         Err(e) => {
                             #[cfg(feature = "log")]
                             tracing::warn!("ACME: 检查证书到期时间失败: {}", e);
+                            false
                         }
+                    };
+
+                    // 检查域名是否有新增或变更（从证书 SAN 扩展中提取对比）
+                    let domains_changed = match check_domains_changed(
+                        &acme.cert_path(),
+                        &acme.config.domains,
+                    )
+                    .await
+                    {
+                        Ok(true) => {
+                            #[cfg(feature = "log")]
+                            tracing::info!("ACME: 域名有新增或变更，需要重新申请证书");
+                            true
+                        }
+                        Ok(false) => false,
+                        Err(e) => {
+                            #[cfg(feature = "log")]
+                            tracing::warn!("ACME: 检查域名变更失败: {}", e);
+                            false
+                        }
+                    };
+
+                    if need_renew || domains_changed {
+                        #[cfg(feature = "log")]
+                        tracing::info!(
+                            "ACME: 开始重新申请证书 (到期={}, 域名变更={})...",
+                            need_renew,
+                            domains_changed
+                        );
+
+                        let _ = tokio::fs::remove_file(acme.cert_path()).await;
+                        let _ = tokio::fs::remove_file(acme.key_path()).await;
+
+                        match acme.obtain_certificates().await {
+                            Ok((cert_path, key_path)) => {
+                                #[cfg(feature = "log")]
+                                tracing::info!("ACME: 证书申请成功");
+                                acme.invoke_cert_renewed(&state, cert_path, key_path).await;
+                            }
+                            Err(e) => {
+                                #[cfg(feature = "log")]
+                                tracing::error!("ACME: 证书申请失败: {}", e);
+                                acme.invoke_cert_failed(&state, &e.to_string()).await;
+                            }
+                        }
+                    } else {
+                        #[cfg(feature = "log")]
+                        tracing::debug!("ACME: 证书有效且域名未变，无需续期");
                     }
                 }
 
@@ -610,13 +643,73 @@ impl AcmeState {
 
     /// 初始化证书：检查缓存或在后台申请
     ///
-    /// - 缓存命中 → 立即检查是否需要续期，启动续期后台任务，返回 `Some((cert_path, key_path))`
+    /// - 缓存命中且域名未变 → 启动续期后台任务，返回 `Some((cert_path, key_path))`
+    /// - 缓存命中但域名有新增/变更 → 删除旧证书，后台重新申请，返回 `None`
     /// - 缓存未命中 → 在后台申请，申请成功后自动启动续期任务，返回 `None`
     pub fn init_certs(&self, state: crate::AppState) -> Option<(PathBuf, PathBuf)> {
         if self.has_cached_certs() {
-            self.spawn_renewal_task(state);
+            #[cfg(feature = "log")]
+            tracing::debug!(
+                "ACME: 发现缓存证书，后台检查域名是否变更 (当前: {:?})...",
+                self.config.domains
+            );
+
+            // 后台检查域名是否有新增或变更
+            let cert_path = self.cert_path();
+            let current_domains = self.config.domains.clone();
+            let acme = self.clone();
+
+            tokio::spawn(async move {
+                let domains_changed =
+                    match check_domains_changed(&cert_path, &current_domains).await {
+                        Ok(changed) => changed,
+                        Err(e) => {
+                            #[cfg(feature = "log")]
+                            tracing::warn!("ACME: 检查域名变更失败: {}", e);
+                            false
+                        }
+                    };
+
+                if domains_changed {
+                    #[cfg(feature = "log")]
+                    tracing::debug!("ACME: 域名有新增或变更，删除旧证书并重新申请...");
+                    let _ = tokio::fs::remove_file(acme.cert_path()).await;
+                    let _ = tokio::fs::remove_file(acme.key_path()).await;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    match acme.obtain_certificates().await {
+                        Ok((cert_path, key_path)) => {
+                            #[cfg(feature = "log")]
+                            tracing::info!("ACME: 证书申请成功");
+                            acme.invoke_cert_obtained(&state, cert_path, key_path).await;
+                            acme.spawn_renewal_task(state);
+                        }
+                        Err(e) => {
+                            #[cfg(feature = "log")]
+                            tracing::error!("ACME: 证书申请失败: {}", e);
+                            acme.invoke_cert_failed(&state, &e.to_string()).await;
+                        }
+                    }
+                } else {
+                    #[cfg(feature = "log")]
+                    tracing::debug!("ACME: 域名未变更，使用缓存证书");
+                    acme.spawn_renewal_task(state);
+                }
+            });
+
+            // 旧证书仍然返回，让服务先用旧证书启动（后台会在完成后通过回调通知热重载）
             Some((self.cert_path(), self.key_path()))
         } else {
+            #[cfg(feature = "log")]
+            tracing::debug!(
+                "ACME: 证书未缓存，2 秒后开始为 {:?} 申请证书 ({}环境)...",
+                self.config.domains,
+                if self.config.staging {
+                    "测试"
+                } else {
+                    "生产"
+                }
+            );
+
             let acme = self.clone();
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(2)).await;
@@ -718,6 +811,137 @@ async fn check_cert_expiry(cert_path: &PathBuf, renewal_days: u32) -> crate::Res
     );
 
     Ok(remaining <= renewal_threshold)
+}
+
+/// 从证书的 SAN (Subject Alternative Name) 扩展中提取 DNS 域名列表
+///
+/// 解析 X.509 证书中 OID 2.5.29.17 的扩展值，
+/// 提取所有 dNSName 条目。
+fn extract_san_domains(cert: &x509_certificate::X509Certificate) -> Vec<String> {
+    let mut domains = Vec::new();
+
+    for ext in cert.iter_extensions() {
+        // OID 2.5.29.17 = subjectAltName
+        if ext.id.to_string() != "2.5.29.17" {
+            continue;
+        }
+
+        // 获取扩展值的原始 DER 字节
+        // 结构: OCTET STRING (extnValue) 包裹 SEQUENCE OF GeneralName
+        let bytes = ext.value.to_bytes();
+        if bytes.len() < 2 || bytes[0] != 0x30 {
+            continue;
+        }
+
+        // 跳过外层 SEQUENCE 标签和长度，进入 GeneralNames 内容
+        let (inner_start, inner_end) = match read_der_tlv(&bytes, 0) {
+            Some((start, end)) => (start, end),
+            None => continue,
+        };
+
+        // 解析 SEQUENCE 内的 GeneralName 条目
+        let mut pos = inner_start;
+        let slice = &bytes;
+        while pos < inner_end && pos < slice.len() {
+            if pos >= slice.len() {
+                break;
+            }
+            let tag = slice[pos];
+
+            // 读取 DER TLV
+            let (content_start, content_end) = match read_der_tlv(slice, pos) {
+                Some((s, e)) => (s, e),
+                None => break,
+            };
+
+            // dNSName: context-specific [2], primitive → tag = 0x82
+            if tag == 0x82 {
+                let name = String::from_utf8_lossy(&slice[content_start..content_end]).to_string();
+                domains.push(name);
+            }
+
+            pos = content_end;
+        }
+        break; // 只处理第一个 SAN 扩展
+    }
+
+    domains
+}
+
+/// 读取 DER TLV 结构，返回 (内容起始位置, 内容结束位置)
+/// 返回 None 表示解析失败
+fn read_der_tlv(data: &[u8], start: usize) -> Option<(usize, usize)> {
+    if start >= data.len() {
+        return None;
+    }
+    let mut pos = start + 1; // 跳过 tag
+    if pos >= data.len() {
+        return None;
+    }
+    let len_byte = data[pos];
+    pos += 1;
+
+    let length: usize = if len_byte & 0x80 == 0 {
+        // 短格式：长度 < 128
+        len_byte as usize
+    } else {
+        // 长格式：低 7 位表示后续字节数
+        let num_bytes = (len_byte & 0x7f) as usize;
+        let mut len_val = 0usize;
+        for _ in 0..num_bytes {
+            if pos >= data.len() {
+                return None;
+            }
+            len_val = (len_val << 8) | (data[pos] as usize);
+            pos += 1;
+        }
+        len_val
+    };
+
+    let content_start = pos;
+    let content_end = pos + length;
+    if content_end > data.len() {
+        return None;
+    }
+    Some((content_start, content_end))
+}
+
+/// 检查证书中的域名与当前配置的域名是否有新增或变更
+///
+/// 从缓存的 PEM 证书中提取 SAN 域名，与当前配置的域名集合对比：
+/// - 如果当前域名集合中存在证书中没有的域名 → 返回 `Ok(true)`（需要重新申请）
+/// - 如果当前域名是证书域名的子集（只减少没新增） → 返回 `Ok(false)`
+async fn check_domains_changed(
+    cert_path: &PathBuf,
+    current_domains: &[String],
+) -> crate::Result<bool> {
+    let pem_data = tokio::fs::read(cert_path)
+        .await
+        .map_err(|e| crate::Error::custom(50020, format!("ACME: 读取证书文件失败: {}", e)))?;
+
+    let cert = x509_certificate::X509Certificate::from_pem(&pem_data)
+        .map_err(|e| crate::Error::custom(50020, format!("ACME: 解析证书失败: {}", e)))?;
+
+    let cert_domains = extract_san_domains(&cert);
+    let cert_set: HashSet<&str> = cert_domains.iter().map(|s| s.as_str()).collect();
+    let current_set: HashSet<&str> = current_domains.iter().map(|s| s.as_str()).collect();
+
+    // 当前有而证书中没有的域名 → 需要重新申请
+    let new_domains: Vec<_> = current_set.difference(&cert_set).collect();
+    if !new_domains.is_empty() {
+        #[cfg(feature = "log")]
+        tracing::debug!(
+            "ACME: 检测到新增/变更域名: {:?} (证书现有: {:?})",
+            new_domains,
+            cert_domains
+        );
+        return Ok(true);
+    }
+
+    #[cfg(feature = "log")]
+    tracing::debug!("ACME: 域名未变更 (证书: {:?})", cert_domains);
+
+    Ok(false)
 }
 
 // ═══════════════════════════════════════════════════════════════
