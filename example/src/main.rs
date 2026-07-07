@@ -319,21 +319,25 @@ async fn main() {
             lang: afast::Lang::TS(vec![afast::JsTsCallType::Fetch, afast::JsTsCallType::Ws]),
             path: std::path::PathBuf::from("example/client/ts"),
             debug: true,
+            services: None,
         })
         .generate(afast::GenerateTarget {
             lang: afast::Lang::JS(vec![afast::JsTsCallType::Fetch, afast::JsTsCallType::Ws]),
             path: std::path::PathBuf::from("example/client/js"),
             debug: true,
+            services: None,
         })
         .generate(afast::GenerateTarget {
             lang: afast::Lang::KT(vec![afast::KtCallType::Tcp]),
             path: std::path::PathBuf::from("example/client/kt"),
             debug: true,
+            services: None,
         })
         .generate(afast::GenerateTarget {
             lang: afast::Lang::RS(vec![afast::RsCallType::TcpAsync]),
             path: std::path::PathBuf::from("example/client/rs"),
             debug: true,
+            services: None,
         })
         .service(service::user::build_service())
         .service(service::user_backend::build_service())

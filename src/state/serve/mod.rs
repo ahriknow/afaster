@@ -5,21 +5,47 @@
 //! - **编译期嵌入模式**：将整个目录在编译期嵌入二进制文件
 //!
 //! 通过 `get("*", serve)` 向前端提供静态内容（如 Vue SPA）。
+//! 支持多个 SPA 项目，每个项目配置独立的 prefix 和 SPA 模式。
 //!
 //! ## 配置示例 (config.toml)
 //!
+//! ### 单个 SPA
 //! ```toml
 //! [serve]
 //! prefix = "/"           # URL 前缀, 默认 "/"
 //! spa = true             # SPA 模式: 未找到文件时返回 index.html
 //! ```
 //!
+//! ### 多个 SPA 项目
+//! ```toml
+//! [[serve]]
+//! prefix = "/admin"
+//! spa = true
+//!
+//! [[serve]]
+//! prefix = "/app"
+//! spa = true
+//!
+//! [[serve]]
+//! prefix = "/docs"
+//! spa = false
+//! ```
+//!
 //! ## 代码示例
 //!
 //! ```rust,no_run
-//! // 运行时目录模式
+//! // 运行时目录模式（单个）
 //! let app = AFaster::new("config.toml".into()).await?
 //!     .with_serve(afaster::serve::Serve::from_dir("./dist"))
+//!     .service(svc)
+//!     .run().await;
+//!
+//! // 多个 SPA 项目
+//! let app = AFaster::new("config.toml".into()).await?
+//!     .with_serves(vec![
+//!         afaster::serve::Serve::from_dir("./admin/dist").with_prefix("/admin").with_spa(true),
+//!         afaster::serve::Serve::from_dir("./app/dist").with_prefix("/app").with_spa(true),
+//!     ])
 //!     .service(svc)
 //!     .run().await;
 //!
@@ -130,9 +156,22 @@ impl Serve {
         }
     }
 
-    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let config: ServeConfig = crate::state::extract(table, "serve")?;
-        Ok(Self::from_config(&config, "./static"))
+    pub fn from_table(table: &toml::Table) -> crate::Result<Vec<Self>> {
+        // 尝试解析 [[serve]] 数组形式
+        if let Some(serves) = table.get("serve") {
+            // 判断是数组还是单个 table
+            if let Ok(arr) = serves.clone().try_into::<Vec<ServeConfig>>() {
+                return arr
+                    .into_iter()
+                    .map(|c| Ok(Self::from_config(&c, "./static")))
+                    .collect();
+            }
+            // 单个 [serve] section，兼容旧配置
+            if let Ok(config) = serves.clone().try_into::<ServeConfig>() {
+                return Ok(vec![Self::from_config(&config, "./static")]);
+            }
+        }
+        Ok(Vec::new())
     }
 
     /// 设置 URL 前缀
@@ -145,17 +184,6 @@ impl Serve {
     pub fn with_spa(mut self, spa: bool) -> Self {
         self.spa = spa;
         self
-    }
-
-    /// 获取泄露的路径字符串（用于 service! 宏注册路由）
-    pub fn leaked_path(&self) -> &'static str {
-        let path = if self.prefix == "/" || self.prefix.is_empty() {
-            "*".to_string()
-        } else {
-            let trimmed = self.prefix.trim_start_matches('/');
-            format!("{}/*", trimmed)
-        };
-        Box::leak(path.into_boxed_str())
     }
 
     /// 查找文件并返回 (内容, MIME 类型)
@@ -232,20 +260,26 @@ impl Serve {
 /// 静态文件服务 handler
 ///
 /// 通过 `get("*", serve_handler)` 注册，处理所有 GET 请求。
+/// 匹配逻辑：按注册顺序遍历所有 Serve，找到 prefix 匹配的第一个。
 #[afast::get(desc("Serve static files"), no_trace)]
 pub async fn serve_handler(
     afast::FullPath(path): afast::FullPath,
     afast::State(state): afast::State<crate::AppState>,
 ) -> afast::HttpResult<afast::Serve> {
-    let serve = state
-        .serve
-        .as_ref()
-        .ok_or_else(|| afast::Error::custom(500, "Serve module not configured"))?;
-
-    match serve.resolve(&path) {
-        Some((data, content_type)) => Ok(afast::Serve { data, content_type }),
-        None => Err(afast::Error::custom(404, "File not found")),
+    let serves = &state.serve;
+    if serves.is_empty() {
+        return Err(afast::Error::custom(500, "Serve module not configured"));
     }
+
+    for serve in serves {
+        if path_matches_prefix(&path, &serve.prefix) {
+            if let Some((data, content_type)) = serve.resolve(&path) {
+                return Ok(afast::Serve { data, content_type });
+            }
+        }
+    }
+
+    Err(afast::Error::custom(404, "File not found"))
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -266,6 +300,27 @@ fn strip_prefix(path: &str, prefix: &str) -> String {
         rest.to_string()
     } else {
         path.to_string()
+    }
+}
+
+/// 判断请求路径是否匹配 Serve 的 prefix
+///
+/// 匹配规则：
+/// - prefix 为 "/" 时匹配所有路径
+/// - 否则检查路径是否以 prefix 开头，且 prefix 后紧跟 `/`、`?` 或字符串结束
+fn path_matches_prefix(path: &str, prefix: &str) -> bool {
+    let prefix = prefix.trim_end_matches('/');
+    if prefix.is_empty() || prefix == "/" {
+        return true;
+    }
+
+    let prefix = prefix.trim_start_matches('/');
+    let path_trimmed = path.trim_start_matches('/');
+
+    if let Some(rest) = path_trimmed.strip_prefix(prefix) {
+        rest.is_empty() || rest.starts_with('/') || rest.starts_with('?')
+    } else {
+        false
     }
 }
 
@@ -306,7 +361,7 @@ fn mime_type(path: &str) -> String {
 
 /// AFaster 静态文件服务配置扩展
 pub trait AFasterServeExt {
-    /// 设置静态文件服务
+    /// 设置静态文件服务（单个）
     ///
     /// # 示例
     ///
@@ -324,11 +379,30 @@ pub trait AFasterServeExt {
     ///     .run().await;
     /// ```
     fn with_serve(self, serve: Serve) -> Self;
+
+    /// 批量设置静态文件服务（多个 SPA 项目）
+    ///
+    /// # 示例
+    ///
+    /// ```rust,no_run
+    /// AFaster::new("config.toml".into()).await?
+    ///     .with_serves(vec![
+    ///         afaster::serve::Serve::from_dir("./admin/dist").with_prefix("/admin").with_spa(true),
+    ///         afaster::serve::Serve::from_dir("./app/dist").with_prefix("/app").with_spa(true),
+    ///     ])
+    ///     .run().await;
+    /// ```
+    fn with_serves(self, serves: Vec<Serve>) -> Self;
 }
 
 impl AFasterServeExt for crate::AFaster {
     fn with_serve(mut self, serve: Serve) -> Self {
-        self.state.serve = Some(serve);
+        self.state.serve.push(serve);
+        self
+    }
+
+    fn with_serves(mut self, serves: Vec<Serve>) -> Self {
+        self.state.serve.extend(serves);
         self
     }
 }

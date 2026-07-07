@@ -24,6 +24,15 @@ pub fn not_a_number(detail: &str) -> crate::Error {
     crate::Error::custom(42903, format!("MemKV value is not a number: {}", detail))
 }
 
+/// 类型不匹配 (42904)
+#[inline]
+pub fn type_mismatch(expected: &str, actual: &str) -> crate::Error {
+    crate::Error::custom(
+        42904,
+        format!("MemKV type mismatch: expected {}, got {}", expected, actual),
+    )
+}
+
 /// 操作执行失败 (52901)
 #[inline]
 pub fn cmd_failed(cmd: &str, detail: &str) -> crate::Error {

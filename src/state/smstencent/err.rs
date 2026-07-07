@@ -29,3 +29,21 @@ pub fn request_failed(detail: &str) -> crate::Error {
 pub fn no_callback() -> crate::Error {
     crate::Error::custom(51703, "Tencent SMS report callback not registered")
 }
+
+/// 响应解析失败 (51704)
+#[inline]
+pub fn response_parse_failed(detail: &str) -> crate::Error {
+    crate::Error::custom(
+        51704,
+        format!("Tencent SMS response parse failed: {}", detail),
+    )
+}
+
+/// API 业务错误 (51705)
+#[inline]
+pub fn api_error(code: &str, message: &str) -> crate::Error {
+    crate::Error::custom(
+        51705,
+        format!("Tencent SMS API error: {} - {}", code, message),
+    )
+}

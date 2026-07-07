@@ -3,6 +3,25 @@ use err::*;
 
 use serde::Deserialize;
 
+/// 对数据库密码中的特殊字符进行 percent-encoding
+/// RFC 3986: userinfo 中的 ':' 以及 '@' '/' '?' '#' 等必须编码
+#[cfg(any(feature = "db-postgres", feature = "db-mysql"))]
+fn encode_db_password(password: &str) -> String {
+    let mut out = String::with_capacity(password.len() * 3);
+    for &b in password.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{:02X}", b));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(feature = "db-postgres")]
 pub use sqlx::postgres::PgPool;
 
@@ -152,7 +171,11 @@ impl Database {
     async fn connect_postgres(config: &PostgresConfig) -> crate::Result<PgPool> {
         let url = format!(
             "postgres://{}:{}@{}:{}/{}",
-            config.user, config.pass, config.host, config.port, config.name
+            config.user,
+            encode_db_password(&config.pass),
+            config.host,
+            config.port,
+            config.name
         );
         PgPool::connect(&url).await.map_err(|_e| {
             #[cfg(feature = "log")]
@@ -181,7 +204,11 @@ impl Database {
     async fn connect_mysql(config: &MysqlConfig) -> crate::Result<MySqlPool> {
         let url = format!(
             "mysql://{}:{}@{}:{}/{}",
-            config.user, config.pass, config.host, config.port, config.name
+            config.user,
+            encode_db_password(&config.pass),
+            config.host,
+            config.port,
+            config.name
         );
         MySqlPool::connect(&url).await.map_err(|_e| {
             #[cfg(feature = "log")]

@@ -1,6 +1,6 @@
 [package]
 name = "afaster"
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -13,7 +13,7 @@ categories = ["web-programming", "asynchronous"]
 members = ["examples/email", "examples/amap", "examples/tmap", "examples/redis", "examples/scheduler", "examples/excel", "examples/pdf", "examples/image", "examples/file", "examples/argon2", "example"]
 
 [workspace.package]
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -21,7 +21,7 @@ repository = "https://github.com/ahriknow/afaster"
 
 [workspace.dependencies]
 afaster = { path = ".", default-features = false }
-afast = { version = "0.1.22" }
+afast = { version = "0.1.23" }
 afastdata = { version = "0.0.10" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1" }

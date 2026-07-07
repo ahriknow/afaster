@@ -29,3 +29,21 @@ pub fn request_failed(detail: &str) -> crate::Error {
 pub fn no_callback() -> crate::Error {
     crate::Error::custom(51103, "Alibaba SMS report callback not registered")
 }
+
+/// 响应解析失败 (51104)
+#[inline]
+pub fn response_parse_failed(detail: &str) -> crate::Error {
+    crate::Error::custom(
+        51104,
+        format!("Alibaba SMS response parse failed: {}", detail),
+    )
+}
+
+/// API 业务错误 (51105)
+#[inline]
+pub fn api_error(code: &str, message: &str) -> crate::Error {
+    crate::Error::custom(
+        51105,
+        format!("Alibaba SMS API error: {} - {}", code, message),
+    )
+}

@@ -74,7 +74,7 @@ pub fn init_logger() -> LogGuard {
         .with_writer(std::io::stdout)
         .with_ansi(true)
         .with_filter(filter_fn(|metadata| {
-            metadata.level() == &tracing::Level::DEBUG && !is_noisy_crate(metadata.target())
+            metadata.level() <= &tracing::Level::DEBUG && !is_noisy_crate(metadata.target())
         }));
 
     tracing_subscriber::registry()

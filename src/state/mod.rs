@@ -2,6 +2,38 @@ mod callbacks;
 
 use serde::Deserialize;
 
+/// 创建带默认超时的 reqwest HTTP 客户端
+///
+/// - 连接超时: 10 秒
+/// - 请求超时: 30 秒
+#[cfg(any(
+    feature = "wx-login-mini",
+    feature = "wx-login-app",
+    feature = "wx-login-web",
+    feature = "wx-official",
+    feature = "oss",
+    feature = "cos",
+    feature = "wx-virtual-pay",
+    feature = "github-oauth2",
+    feature = "wx-sec-check",
+    feature = "wx-pay-h5",
+    feature = "sms-ali",
+    feature = "sms-tencent",
+    feature = "amap",
+    feature = "tmap",
+    feature = "push-getui",
+    feature = "push-jpush",
+    feature = "push-xiaomi",
+    feature = "ali-pay-web"
+))]
+pub fn default_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 /// 从 toml::Table 中提取并反序列化指定 section
 fn extract<T: serde::de::DeserializeOwned>(table: &toml::Table, key: &str) -> crate::Result<T> {
     table
@@ -209,7 +241,7 @@ pub struct AppState {
     #[cfg(feature = "rate-limit")]
     pub rate_limit_config: rate_limit::RateLimitModuleConfig,
     #[cfg(feature = "serve")]
-    pub serve: Option<serve::Serve>,
+    pub serve: Vec<serve::Serve>,
     #[cfg(feature = "redis")]
     pub redis: redis::Redis,
     #[cfg(all(feature = "valkey", not(feature = "redis")))]
@@ -302,7 +334,7 @@ impl AppState {
             #[cfg(feature = "rate-limit")]
             rate_limit_config: rate_limit::RateLimitModuleConfig::from_table(&table)?,
             #[cfg(feature = "serve")]
-            serve: Some(serve::Serve::from_table(&table)?),
+            serve: serve::Serve::from_table(&table)?,
             #[cfg(feature = "redis")]
             redis: redis::Redis::from_table(&table).await?,
             #[cfg(all(feature = "valkey", not(feature = "redis")))]

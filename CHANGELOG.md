@@ -11,11 +11,22 @@
 
 - **ACME**: 修复 SAN 域名解析 DER 解码 bug — `extract_san_domains` 原先未解析外层 SEQUENCE 包装，导致始终返回空域名列表，误触发无限重新申请
 - **ACME**: 启动日志级别从 `info!` 改为 `debug!` — 适配框架 stdout 层仅输出 DEBUG 级别的设计，确保终端可见
+- **Snowflake**: 修复时钟回拨导致服务 panic 崩溃 — NTP 调整、VM 迁移等场景下时钟可能回移，改为等待时钟追上而非 `panic!("Clock moved backwards")`
+- **WxPay**: 修复每次 API 调用重复解析 PEM 私钥 — 内部函数原先每次都调用 `get_private_key()` 重新解析，现改为优先使用 `init()` 阶段缓存的已解析私钥
+- **WxPay**: 修复错误函数调用参数不匹配 — `sign_failed`、`request_failed`、`query_response`、`refund_response`、`bill_response`、`prepay_response`、`notify_verify`、`private_key_load` 等函数缺少必要参数
+- **WxPay**: 补充缺失的 `notify_decrypt` 错误函数定义
+- **COS**: 补充缺失的 `hmac_sha1` 错误函数定义
+- **SMS Ali**: 补充缺失的 `response_parse_failed` 和 `api_error` 错误函数定义
+- **SMS Tencent**: 补充缺失的 `response_parse_failed` 和 `api_error` 错误函数定义
+- **Database**: 修复数据库密码含特殊字符时连接失败 — 对 PostgreSQL 和 MySQL 连接字符串中的密码进行 percent-encoding，支持 `@`、`:`、`/` 等特殊字符
+- **Health**: 修复版本号硬编码为 `"0.0.5"` — 改为使用 `env!("CARGO_PKG_VERSION")` 自动获取
 
 ### Changed
 
 - **Scheduler**: state 初始化等待逻辑优化 — 从一次性检查改为循环重试（每 100ms 检查一次），避免因 `init_state` 未完成导致任务被跳过
 - **AFaster**: 新增 `get_state()` 方法，允许外部获取 `AppState` 引用
+- **Logger**: 标准输出日志级别从 DEBUG 改为 DEBUG 及以上 — 开发时终端可看到 DEBUG/INFO/WARN/ERROR 日志，不再仅显示 DEBUG
+- **HTTP Client**: 所有模块统一使用带超时的 reqwest 客户端 — 新增 `default_http_client()` 工具函数（连接超时 10s，请求超时 30s），避免第三方 API 无响应时请求无限等待
 
 ## [0.0.5]
 

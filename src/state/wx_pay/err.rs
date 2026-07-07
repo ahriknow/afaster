@@ -96,3 +96,12 @@ pub fn bill_response(detail: &str) -> crate::Error {
         format!("WxPay bill response parse failed: {}", detail),
     )
 }
+
+/// 回调通知解密失败 (50909)
+#[inline]
+pub fn notify_decrypt(detail: &str) -> crate::Error {
+    crate::Error::custom(
+        50909,
+        format!("WxPay notification decrypt failed: {}", detail),
+    )
+}

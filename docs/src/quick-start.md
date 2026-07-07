@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.5", features = ["jwt", "log", "redis"] }
+afaster = { version = "0.0.6", features = ["jwt", "log", "redis"] }
 ```
 
 ## 配置

@@ -82,8 +82,14 @@ impl Snowflake {
         let mut inner = self.inner.lock().await;
         let mut timestamp = Self::current_time_millis();
 
+        // 时钟回拨时等待追上，而非 panic（NTP 调整、VM 迁移等场景可能发生）
         if timestamp < inner.last_timestamp {
-            panic!("Clock moved backwards");
+            #[cfg(feature = "log")]
+            tracing::warn!(
+                "Snowflake: clock moved backwards by {}ms, waiting...",
+                inner.last_timestamp - timestamp
+            );
+            timestamp = Self::wait_next_millis(inner.last_timestamp);
         }
 
         let sequence = if timestamp == inner.last_timestamp {

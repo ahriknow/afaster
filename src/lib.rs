@@ -386,10 +386,9 @@ impl AFaster {
 
         // 静态文件服务（catch-all, 应最后注册）
         #[cfg(feature = "serve")]
-        if let Some(ref serve) = state.serve {
-            let path = serve.leaked_path();
+        if !state.serve.is_empty() {
             app = app.service(service!("_serve", "Static File Server" => {
-                get(path, state::serve::serve_handler),
+                get("*", state::serve::serve_handler),
             }));
         }
 

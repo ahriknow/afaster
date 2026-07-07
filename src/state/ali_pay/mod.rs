@@ -506,7 +506,7 @@ async fn call_api<T: for<'de> Deserialize<'de>>(
 impl AliPay {
     /// 初始化运行时（加载私钥/公钥、创建 HTTP 客户端）
     pub fn init(&mut self) -> afast::Result<()> {
-        self.runtime.client = reqwest::Client::new();
+        self.runtime.client = super::default_http_client();
         self.runtime.private_key_parsed = Some(load_private_key(&self.config.private_key)?);
         if !self.config.alipay_public_key.is_empty() {
             self.runtime.alipay_public_key_parsed =

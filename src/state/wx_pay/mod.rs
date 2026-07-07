@@ -94,7 +94,7 @@ fn default_callback_path() -> String {
 impl WxPay {
     /// 初始化运行时（加载私钥、创建 HTTP 客户端）
     pub fn init(&mut self) -> crate::Result<()> {
-        self.runtime.client = reqwest::Client::new();
+        self.runtime.client = super::default_http_client();
         self.runtime.private_key_parsed = Some(load_private_key(&self.config.private_key)?);
         Ok(())
     }
@@ -135,18 +135,36 @@ impl WxPay {
         &self,
         out_trade_no: &str,
     ) -> crate::Result<WxPayTransactionNotify> {
-        query_by_out_trade_no(&self.runtime.client, &self.config, out_trade_no).await
+        query_by_out_trade_no(
+            &self.runtime.client,
+            &self.config,
+            out_trade_no,
+            self.runtime.private_key_parsed.as_ref(),
+        )
+        .await
     }
 
     pub async fn query_by_transaction_id(
         &self,
         transaction_id: &str,
     ) -> crate::Result<WxPayTransactionNotify> {
-        query_by_transaction_id(&self.runtime.client, &self.config, transaction_id).await
+        query_by_transaction_id(
+            &self.runtime.client,
+            &self.config,
+            transaction_id,
+            self.runtime.private_key_parsed.as_ref(),
+        )
+        .await
     }
 
     pub async fn close_order(&self, out_trade_no: &str) -> crate::Result<()> {
-        close_order(&self.runtime.client, &self.config, out_trade_no).await
+        close_order(
+            &self.runtime.client,
+            &self.config,
+            out_trade_no,
+            self.runtime.private_key_parsed.as_ref(),
+        )
+        .await
     }
 
     pub async fn refund(
@@ -165,12 +183,19 @@ impl WxPay {
             amount,
             total,
             reason,
+            self.runtime.private_key_parsed.as_ref(),
         )
         .await
     }
 
     pub async fn query_refund(&self, out_refund_no: &str) -> crate::Result<RefundResult> {
-        query_refund(&self.runtime.client, &self.config, out_refund_no).await
+        query_refund(
+            &self.runtime.client,
+            &self.config,
+            out_refund_no,
+            self.runtime.private_key_parsed.as_ref(),
+        )
+        .await
     }
 
     pub async fn apply_abnormal_refund(
@@ -185,6 +210,7 @@ impl WxPay {
             refund_id,
             out_refund_no,
             abnormal_type,
+            self.runtime.private_key_parsed.as_ref(),
         )
         .await
     }
@@ -194,7 +220,14 @@ impl WxPay {
         bill_date: &str,
         bill_type: Option<&str>,
     ) -> crate::Result<BillDownloadResult> {
-        apply_trade_bill(&self.runtime.client, &self.config, bill_date, bill_type).await
+        apply_trade_bill(
+            &self.runtime.client,
+            &self.config,
+            bill_date,
+            bill_type,
+            self.runtime.private_key_parsed.as_ref(),
+        )
+        .await
     }
 
     pub async fn apply_fund_flow_bill(
@@ -202,11 +235,24 @@ impl WxPay {
         bill_date: &str,
         account_type: Option<&str>,
     ) -> crate::Result<BillDownloadResult> {
-        apply_fund_flow_bill(&self.runtime.client, &self.config, bill_date, account_type).await
+        apply_fund_flow_bill(
+            &self.runtime.client,
+            &self.config,
+            bill_date,
+            account_type,
+            self.runtime.private_key_parsed.as_ref(),
+        )
+        .await
     }
 
     pub async fn download_bill(&self, download_url: &str) -> crate::Result<String> {
-        download_bill(&self.runtime.client, &self.config, download_url).await
+        download_bill(
+            &self.runtime.client,
+            &self.config,
+            download_url,
+            self.runtime.private_key_parsed.as_ref(),
+        )
+        .await
     }
 
     pub fn decrypt_transaction_notify(
@@ -269,6 +315,7 @@ impl WxPay {
             payer_client_ip,
             h5_info_type,
             scene_url,
+            self.runtime.private_key_parsed.as_ref(),
         )
         .await
     }
@@ -287,6 +334,7 @@ impl WxPay {
             out_trade_no,
             description,
             amount_total,
+            self.runtime.private_key_parsed.as_ref(),
         )
         .await
     }
@@ -305,6 +353,7 @@ impl WxPay {
             out_trade_no,
             description,
             amount_total,
+            self.runtime.private_key_parsed.as_ref(),
         )
         .await
     }
@@ -325,6 +374,7 @@ impl WxPay {
             description,
             amount_total,
             openid,
+            self.runtime.private_key_parsed.as_ref(),
         )
         .await
     }
@@ -345,6 +395,7 @@ impl WxPay {
             description,
             amount_total,
             openid,
+            self.runtime.private_key_parsed.as_ref(),
         )
         .await
     }
@@ -377,7 +428,7 @@ pub fn build_authorization(
     let signing_key = SigningKey::<sha2_v10::Sha256>::new(private_key.clone());
     let signature = signing_key
         .try_sign(message.as_bytes())
-        .map_err(|_| sign_failed())?;
+        .map_err(|_| sign_failed(""))?;
     let signature_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
     Ok(format!(
         r#"WECHATPAY2-SHA256-RSA2048 mchid="{}",nonce_str="{}",timestamp="{}",serial_no="{}",signature="{}""#,
@@ -414,7 +465,7 @@ pub async fn send_v3_request(
     req.send().await.map_err(|_e| {
         #[cfg(feature = "log")]
         tracing::error!("WxPay request failed: {}", _e);
-        request_failed()
+        request_failed("")
     })
 }
 
@@ -442,8 +493,9 @@ pub async fn query_by_out_trade_no(
     client: &reqwest::Client,
     config: &WxPayConfig,
     out_trade_no: &str,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<WxPayTransactionNotify> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let url_path = format!(
         "/v3/pay/transactions/out-trade-no/{}?mchid={}",
         out_trade_no, config.mch_id
@@ -461,15 +513,16 @@ pub async fn query_by_out_trade_no(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "query_order").await);
     }
-    resp.json().await.map_err(|_e| query_response())
+    resp.json().await.map_err(|_e| query_response(""))
 }
 
 pub async fn query_by_transaction_id(
     client: &reqwest::Client,
     config: &WxPayConfig,
     transaction_id: &str,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<WxPayTransactionNotify> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let url_path = format!(
         "/v3/pay/transactions/id/{}?mchid={}",
         transaction_id, config.mch_id
@@ -487,7 +540,7 @@ pub async fn query_by_transaction_id(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "query_order").await);
     }
-    resp.json().await.map_err(|_e| query_response())
+    resp.json().await.map_err(|_e| query_response(""))
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -498,8 +551,9 @@ pub async fn close_order(
     client: &reqwest::Client,
     config: &WxPayConfig,
     out_trade_no: &str,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<()> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let url_path = format!("/v3/pay/transactions/out-trade-no/{}/close", out_trade_no);
     let body = serde_json::json!({"mchid": config.mch_id});
     let resp = send_v3_request(
@@ -530,8 +584,9 @@ pub async fn refund(
     refund_amount: i64,
     total: i64,
     reason: Option<&str>,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<RefundResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let mut body = serde_json::json!({
         "out_refund_no": out_refund_no,
         "out_trade_no": out_trade_no,
@@ -556,15 +611,16 @@ pub async fn refund(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "refund").await);
     }
-    resp.json().await.map_err(|_e| refund_response())
+    resp.json().await.map_err(|_e| refund_response(""))
 }
 
 pub async fn query_refund(
     client: &reqwest::Client,
     config: &WxPayConfig,
     out_refund_no: &str,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<RefundResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let url_path = format!("/v3/refund/domestic/refunds/{}", out_refund_no);
     let resp = send_v3_request(
         client,
@@ -579,7 +635,7 @@ pub async fn query_refund(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "query_refund").await);
     }
-    resp.json().await.map_err(|_e| refund_response())
+    resp.json().await.map_err(|_e| refund_response(""))
 }
 
 pub async fn apply_abnormal_refund(
@@ -588,8 +644,9 @@ pub async fn apply_abnormal_refund(
     refund_id: &str,
     out_refund_no: &str,
     abnormal_type: &str,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<RefundResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let url_path = format!(
         "/v3/refund/domestic/refunds/{}/apply-abnormal-refund",
         refund_id
@@ -608,7 +665,7 @@ pub async fn apply_abnormal_refund(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "apply_abnormal_refund").await);
     }
-    resp.json().await.map_err(|_e| refund_response())
+    resp.json().await.map_err(|_e| refund_response(""))
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -620,8 +677,9 @@ pub async fn apply_trade_bill(
     config: &WxPayConfig,
     bill_date: &str,
     bill_type: Option<&str>,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<BillDownloadResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let mut url_path = format!("/v3/bill/tradebill?bill_date={}", bill_date);
     if let Some(t) = bill_type {
         url_path.push_str(&format!("&bill_type={}", t));
@@ -639,7 +697,7 @@ pub async fn apply_trade_bill(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "apply_trade_bill").await);
     }
-    resp.json().await.map_err(|_e| bill_response())
+    resp.json().await.map_err(|_e| bill_response(""))
 }
 
 pub async fn apply_fund_flow_bill(
@@ -647,8 +705,9 @@ pub async fn apply_fund_flow_bill(
     config: &WxPayConfig,
     bill_date: &str,
     account_type: Option<&str>,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<BillDownloadResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let mut url_path = format!("/v3/bill/fundflowbill?bill_date={}", bill_date);
     if let Some(t) = account_type {
         url_path.push_str(&format!("&account_type={}", t));
@@ -666,15 +725,16 @@ pub async fn apply_fund_flow_bill(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "apply_fund_flow_bill").await);
     }
-    resp.json().await.map_err(|_e| bill_response())
+    resp.json().await.map_err(|_e| bill_response(""))
 }
 
 pub async fn download_bill(
     client: &reqwest::Client,
     config: &WxPayConfig,
     download_url: &str,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<String> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let authorization = build_authorization(
         &config.mch_id,
         &config.serial_no,
@@ -689,11 +749,11 @@ pub async fn download_bill(
         .header("Accept", "application/json")
         .send()
         .await
-        .map_err(|_e| request_failed())?;
+        .map_err(|_e| request_failed(""))?;
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "download_bill").await);
     }
-    resp.text().await.map_err(|_e| bill_response())
+    resp.text().await.map_err(|_e| bill_response(""))
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -765,12 +825,12 @@ pub fn verify_notification_signature(
     let verifying_key = VerifyingKey::<sha2_v10::Sha256>::new(cert);
     let sig_bytes = base64::engine::general_purpose::STANDARD
         .decode(signature)
-        .map_err(|_| notify_verify())?;
+        .map_err(|_| notify_verify(""))?;
     let signature_obj =
-        rsa::pkcs1v15::Signature::try_from(sig_bytes.as_slice()).map_err(|_| notify_verify())?;
+        rsa::pkcs1v15::Signature::try_from(sig_bytes.as_slice()).map_err(|_| notify_verify(""))?;
     verifying_key
         .verify(message.as_bytes(), &signature_obj)
-        .map_err(|_| notify_verify())
+        .map_err(|_| notify_verify(""))
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -899,10 +959,21 @@ pub fn get_private_key(config: &WxPayConfig) -> crate::Result<rsa::RsaPrivateKey
     load_private_key(&config.private_key)
 }
 
+/// 获取私钥（优先使用缓存，避免每次 API 调用都重新解析 PEM）
+fn get_or_load_private_key(
+    config: &WxPayConfig,
+    cached: Option<&rsa::RsaPrivateKey>,
+) -> crate::Result<rsa::RsaPrivateKey> {
+    match cached {
+        Some(key) => Ok(key.clone()),
+        None => load_private_key(&config.private_key),
+    }
+}
+
 pub fn load_private_key(pem_str: &str) -> crate::Result<rsa::RsaPrivateKey> {
     use rsa::pkcs8::DecodePrivateKey;
-    let pem = pem::parse(pem_str).map_err(|_e| private_key_load())?;
-    rsa::RsaPrivateKey::from_pkcs8_der(pem.contents()).map_err(|_e| private_key_load())
+    let pem = pem::parse(pem_str).map_err(|_e| private_key_load(""))?;
+    rsa::RsaPrivateKey::from_pkcs8_der(pem.contents()).map_err(|_e| private_key_load(""))
 }
 
 fn load_certificate_public_key(pem_str: &str) -> crate::Result<rsa::RsaPublicKey> {
@@ -986,8 +1057,9 @@ pub async fn prepay_h5(
     payer_client_ip: &str,
     h5_info_type: &str,
     scene_url: &str,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<H5PrepayResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let notify_url = config
         .notify_url
         .as_deref()
@@ -1017,7 +1089,7 @@ pub async fn prepay_h5(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "prepay_h5").await);
     }
-    resp.json().await.map_err(|_e| prepay_response())
+    resp.json().await.map_err(|_e| prepay_response(""))
 }
 
 /// Native 预下单
@@ -1031,8 +1103,9 @@ pub async fn prepay_native(
     out_trade_no: &str,
     description: &str,
     amount_total: i64,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<NativePrepayResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let notify_url = config
         .notify_url
         .as_deref()
@@ -1058,7 +1131,7 @@ pub async fn prepay_native(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "prepay_native").await);
     }
-    resp.json().await.map_err(|_e| prepay_response())
+    resp.json().await.map_err(|_e| prepay_response(""))
 }
 
 /// APP 预下单
@@ -1072,8 +1145,9 @@ pub async fn prepay_app(
     out_trade_no: &str,
     description: &str,
     amount_total: i64,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<AppPrepayResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let notify_url = config
         .notify_url
         .as_deref()
@@ -1099,7 +1173,7 @@ pub async fn prepay_app(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "prepay_app").await);
     }
-    resp.json().await.map_err(|_e| prepay_response())
+    resp.json().await.map_err(|_e| prepay_response(""))
 }
 
 /// 小程序/JSAPI 预下单
@@ -1116,8 +1190,9 @@ pub async fn prepay_js_mini(
     description: &str,
     amount_total: i64,
     openid: &str,
+    cached_key: Option<&rsa::RsaPrivateKey>,
 ) -> crate::Result<MiniPrepayResult> {
-    let private_key = get_private_key(config)?;
+    let private_key = get_or_load_private_key(config, cached_key)?;
     let notify_url = config
         .notify_url
         .as_deref()
@@ -1144,7 +1219,7 @@ pub async fn prepay_js_mini(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "prepay_js_mini").await);
     }
-    resp.json().await.map_err(|_e| prepay_response())
+    resp.json().await.map_err(|_e| prepay_response(""))
 }
 
 // ═══════════════════════════════════════════════════════════════

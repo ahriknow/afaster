@@ -475,7 +475,7 @@ impl Amap {
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
         let mut instance: Self = crate::state::extract(table, "amap")?;
-        instance.client = reqwest::Client::new();
+        instance.client = super::default_http_client();
         Ok(instance)
     }
 }

@@ -18,6 +18,12 @@ pub fn sign_failed() -> crate::Error {
     crate::Error::custom(51202, "Signature calculation failed")
 }
 
+/// HMAC-SHA1 初始化失败 (51205)
+#[inline]
+pub fn hmac_sha1() -> crate::Error {
+    crate::Error::custom(51205, "HMAC-SHA1 init failed")
+}
+
 /// 请求发送失败 (51203)
 #[inline]
 pub fn request_failed(detail: &str) -> crate::Error {

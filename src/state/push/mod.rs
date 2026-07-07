@@ -175,15 +175,15 @@ impl PushManager {
     pub fn init(&mut self) {
         #[cfg(feature = "push-getui")]
         {
-            self.getui.client = reqwest::Client::new();
+            self.getui.client = super::default_http_client();
         }
         #[cfg(feature = "push-jpush")]
         {
-            self.jpush.client = reqwest::Client::new();
+            self.jpush.client = super::default_http_client();
         }
         #[cfg(feature = "push-xiaomi")]
         {
-            self.xiaomi.client = reqwest::Client::new();
+            self.xiaomi.client = super::default_http_client();
         }
     }
 
