@@ -20,7 +20,7 @@ pub async fn get_categories(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> Json<CategoryListResp> {
-    let pool = state.db.pool();
+    let pool = state.db.sqlite();
 
     let rows: Vec<(i64, String, String, String, i32)> = {
         let _s = state.tracing.span(&trace);
@@ -50,7 +50,7 @@ pub async fn get_tags(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> Json<TagListResp> {
-    let pool = state.db.pool();
+    let pool = state.db.sqlite();
 
     let rows: Vec<(i64, String, String)> = {
         let _s = state.tracing.span(&trace);
@@ -80,7 +80,7 @@ pub async fn get_posts(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> Json<PostListResp> {
-    let pool = state.db.pool();
+    let pool = state.db.sqlite();
 
     let total: (i64,) = {
         let _s = state.tracing.span_name(&trace, "count_posts");
@@ -139,7 +139,7 @@ pub async fn get_post_by_id(
     Ctx(trace): Ctx<TraceContext>,
     afast::Query(params): afast::Query<PostIdReq>,
 ) -> Json<PostDetailResp> {
-    let pool = state.db.pool();
+    let pool = state.db.sqlite();
     let id = params.post_id;
 
     let post = {
@@ -214,7 +214,7 @@ pub async fn site_stats(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> Json<DashboardStats> {
-    let pool = state.db.pool();
+    let pool = state.db.sqlite();
 
     let (total_users, total_posts, total_comments) = {
         let _s = state.tracing.span_name(&trace, "aggregate_stats");

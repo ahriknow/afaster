@@ -22,6 +22,12 @@ fn encode_db_password(password: &str) -> String {
     out
 }
 
+#[cfg(feature = "db-ahrisqle")]
+pub use ahrisql::pool::embedded::EmbeddedPool;
+
+#[cfg(feature = "db-ahrisqls")]
+pub use ahrisql::pool::Pool;
+
 #[cfg(feature = "db-postgres")]
 pub use sqlx::postgres::PgPool;
 
@@ -34,6 +40,25 @@ pub use sqlx::mysql::MySqlPool;
 // ═══════════════════════════════════════════════════════════════
 //  数据库配置
 // ═══════════════════════════════════════════════════════════════
+
+#[cfg(feature = "db-ahrisqle")]
+#[derive(Clone, Deserialize)]
+pub struct AhriSqleConfig {
+    pub path: String,
+    pub user: String,
+    pub pass: String,
+    pub name: String,
+}
+
+#[cfg(feature = "db-ahrisqls")]
+#[derive(Clone, Deserialize)]
+pub struct AhriSqlsConfig {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub pass: String,
+    pub name: String,
+}
 
 #[cfg(feature = "db-postgres")]
 #[derive(Clone, Deserialize)]
@@ -68,9 +93,13 @@ pub struct MysqlConfig {
 /// 数据库连接池
 ///
 /// 支持同时启用多种数据库。每种数据库通过独立字段持有连接池，
-/// 可通过 `pg()` / `sqlite()` / `mysql()` 方法获取对应池引用。
+/// 可通过 `ahrisqle()` / `ahrisqls()` / pg()` / `sqlite()` / `mysql()` 方法获取对应池引用。
 #[derive(Clone)]
 pub struct Database {
+    #[cfg(feature = "db-ahrisqle")]
+    pub ahrisqle: EmbeddedPool,
+    #[cfg(feature = "db-ahrisqls")]
+    pub ahrisqls: Pool,
     #[cfg(feature = "db-postgres")]
     pub pg: PgPool,
     #[cfg(feature = "db-sqlite")]
@@ -80,6 +109,18 @@ pub struct Database {
 }
 
 impl Database {
+    /// 获取嵌入式 AhriSQL 连接池引用
+    #[cfg(feature = "db-ahrisqle")]
+    pub fn ahrisqle(&self) -> &EmbeddedPool {
+        &self.ahrisqle
+    }
+
+    /// 获取 AhriSQL 连接池引用
+    #[cfg(feature = "db-ahrisqls")]
+    pub fn ahrisqls(&self) -> &Pool {
+        &self.ahrisqls
+    }
+
     /// 获取 PostgreSQL 连接池引用
     #[cfg(feature = "db-postgres")]
     pub fn pg(&self) -> &PgPool {
@@ -100,34 +141,81 @@ impl Database {
 
     /// 获取默认连接池引用（仅启用单个数据库时可用）
     ///
+    /// - 仅启用 `db-ahrisqle` → 返回 `&EmbeddedPool`
+    /// - 仅启用 `db-ahrisqls` → 返回 `&Pool`
     /// - 仅启用 `db-postgres` → 返回 `&PgPool`
     /// - 仅启用 `db-sqlite` → 返回 `&SqlitePool`
     /// - 仅启用 `db-mysql` → 返回 `&MySqlPool`
     /// - 启用多个 → 编译错误，请使用 `pg()` / `sqlite()` / `mysql()`
+    #[cfg(feature = "db-ahrisqle")]
+    #[cfg(not(any(
+        feature = "db-ahrisqls",
+        feature = "db-postgres",
+        feature = "db-sqlite",
+        feature = "db-mysql"
+    )))]
+    pub fn pool(&self) -> &EmbeddedPool {
+        &self.ahrisqle
+    }
+
+    #[cfg(feature = "db-ahrisqls")]
+    #[cfg(not(any(
+        feature = "db-ahrisqle",
+        feature = "db-postgres",
+        feature = "db-sqlite",
+        feature = "db-mysql"
+    )))]
+    pub fn pool(&self) -> &Pool {
+        &self.ahrisqls
+    }
+
     #[cfg(feature = "db-postgres")]
-    #[cfg(not(any(feature = "db-sqlite", feature = "db-mysql")))]
+    #[cfg(not(any(
+        feature = "db-ahrisqle",
+        feature = "db-ahrisqls",
+        feature = "db-sqlite",
+        feature = "db-mysql"
+    )))]
     pub fn pool(&self) -> &PgPool {
         &self.pg
     }
 
     #[cfg(feature = "db-sqlite")]
-    #[cfg(not(any(feature = "db-postgres", feature = "db-mysql")))]
+    #[cfg(not(any(
+        feature = "db-ahrisqle",
+        feature = "db-ahrisqls",
+        feature = "db-postgres",
+        feature = "db-mysql"
+    )))]
     pub fn pool(&self) -> &SqlitePool {
         &self.sqlite
     }
 
     #[cfg(feature = "db-mysql")]
-    #[cfg(not(any(feature = "db-postgres", feature = "db-sqlite")))]
+    #[cfg(not(any(
+        feature = "db-ahrisqle",
+        feature = "db-ahrisqls",
+        feature = "db-postgres",
+        feature = "db-sqlite"
+    )))]
     pub fn pool(&self) -> &MySqlPool {
         &self.mysql
     }
 
     /// 建立数据库连接（根据启用的 feature 连接所有配置的数据库）
     pub async fn connect(
+        #[cfg(feature = "db-ahrisqle")] ahrisqle: &AhriSqleConfig,
+        #[cfg(feature = "db-ahrisqls")] ahrisqls: &AhriSqlsConfig,
         #[cfg(feature = "db-postgres")] postgres: &PostgresConfig,
         #[cfg(feature = "db-sqlite")] sqlite: &SqliteConfig,
         #[cfg(feature = "db-mysql")] mysql: &MysqlConfig,
     ) -> crate::Result<Self> {
+        #[cfg(feature = "db-ahrisqle")]
+        let ahrisqle = Self::connect_ahrisqle(ahrisqle).await?;
+
+        #[cfg(feature = "db-ahrisqls")]
+        let ahrisqls = Self::connect_ahrisqls(ahrisqls).await?;
+
         #[cfg(feature = "db-postgres")]
         let pg = Self::connect_postgres(postgres).await?;
 
@@ -138,6 +226,10 @@ impl Database {
         let mysql = Self::connect_mysql(mysql).await?;
 
         Ok(Self {
+            #[cfg(feature = "db-ahrisqle")]
+            ahrisqle,
+            #[cfg(feature = "db-ahrisqls")]
+            ahrisqls,
             #[cfg(feature = "db-postgres")]
             pg,
             #[cfg(feature = "db-sqlite")]
@@ -148,6 +240,8 @@ impl Database {
     }
 
     pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        #[cfg(feature = "db-ahrisqls")]
+        let ahrisqls: AhriSqlsConfig = crate::state::extract(table, "ahrisqls")?;
         #[cfg(feature = "db-postgres")]
         let postgres: PostgresConfig = crate::state::extract(table, "postgres")?;
         #[cfg(feature = "db-sqlite")]
@@ -156,6 +250,10 @@ impl Database {
         let mysql: MysqlConfig = crate::state::extract(table, "mysql")?;
 
         Self::connect(
+            #[cfg(feature = "db-ahrisqle")]
+            &ahrisqle,
+            #[cfg(feature = "db-ahrisqls")]
+            &ahrisqls,
             #[cfg(feature = "db-postgres")]
             &postgres,
             #[cfg(feature = "db-sqlite")]
@@ -164,6 +262,32 @@ impl Database {
             &mysql,
         )
         .await
+    }
+
+    /// 建立 AhriSQL 连接池
+    #[cfg(feature = "db-ahrisqle")]
+    async fn connect_ahrisqle(config: &AhriSqleConfig) -> crate::Result<EmbeddedPool> {
+        EmbeddedPool::open(&config.path, &config.name, &config.user, &config.pass)
+            .await
+            .map_err(|_e| {
+                #[cfg(feature = "log")]
+                tracing::error!({ code = 50901, msg = "Database open failed" }, "AhriSQL: {}", _e);
+                connect_failed("AhriSQL")
+            })
+    }
+
+    /// 建立 AhriSQL 连接池
+    #[cfg(feature = "db-ahrisqls")]
+    async fn connect_ahrisqls(config: &AhriSqlsConfig) -> crate::Result<Pool> {
+        let pool = Pool::builder()
+            .host(&config.host)
+            .port(config.port)
+            .user(&config.user)
+            .password(&config.pass)
+            .database(&config.name)
+            .max_connections(64)
+            .build();
+        Ok(pool)
     }
 
     /// 建立 PostgreSQL 连接池
@@ -194,7 +318,7 @@ impl Database {
         };
         SqlitePool::connect(&url).await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50901, msg = "Database connection failed" }, "SQLite: {}", _e);
+            tracing::error!({ code = 50901, msg = "Database open failed" }, "SQLite: {}", _e);
             connect_failed("SQLite")
         })
     }

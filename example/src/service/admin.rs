@@ -44,7 +44,7 @@ async fn ban_user(
     state
         .tracing
         .trace_with(&trace, "ban_user", "封禁用户", || async {
-            let pool = state.db.pool();
+            let pool = state.db.sqlite();
             sqlx::query("UPDATE users SET status = 1, updated_at = datetime('now') WHERE id = ?")
                 .bind(req.target_id)
                 .execute(pool)
@@ -78,7 +78,7 @@ async fn unban_user(
     state
         .tracing
         .trace_with(&trace, "unban_user", "解封用户", || async {
-            let pool = state.db.pool();
+            let pool = state.db.sqlite();
             sqlx::query("UPDATE users SET status = 0, updated_at = datetime('now') WHERE id = ?")
                 .bind(req.target_id)
                 .execute(pool)
@@ -157,7 +157,7 @@ async fn review_post(
     };
 
     state.tracing.trace_with(&trace, "review_post", "审核文章", || async {
-        let pool = state.db.pool();
+        let pool = state.db.sqlite();
         sqlx::query("UPDATE posts SET status = ?, published_at = ?, updated_at = datetime('now') WHERE id = ?")
             .bind(new_status).bind(&pub_at).bind(req.post_id).execute(pool).await
             .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
@@ -192,7 +192,7 @@ async fn pending_posts(
     }
 
     let rows = state.tracing.trace_with(&trace, "query_pending", "查询待审核", || async {
-        let pool = state.db.pool();
+        let pool = state.db.sqlite();
         sqlx::query_as::<_, (i64, i64, String, String, String)>(
             "SELECT id, author_id, title, summary, created_at FROM posts WHERE status = 1 ORDER BY id ASC"
         ).fetch_all(pool).await.unwrap_or_default()
@@ -237,7 +237,7 @@ async fn create_category(
     state
         .tracing
         .trace_with(&trace, "create_category", "创建分类", || async {
-            let pool = state.db.pool();
+            let pool = state.db.sqlite();
             sqlx::query("INSERT INTO categories (name, slug, description) VALUES (?, ?, ?)")
                 .bind(&req.name)
                 .bind(&req.slug)
@@ -273,7 +273,7 @@ async fn delete_category(
     state
         .tracing
         .trace_with(&trace, "delete_category", "删除分类", || async {
-            let pool = state.db.pool();
+            let pool = state.db.sqlite();
             sqlx::query("UPDATE posts SET category_id = NULL WHERE category_id = ?")
                 .bind(req.cat_id)
                 .execute(pool)
@@ -314,7 +314,7 @@ async fn create_tag(
     state
         .tracing
         .trace_with(&trace, "create_tag", "创建标签", || async {
-            let pool = state.db.pool();
+            let pool = state.db.sqlite();
             sqlx::query("INSERT INTO tags (name, slug) VALUES (?, ?)")
                 .bind(&req.name)
                 .bind(&req.slug)
@@ -349,7 +349,7 @@ async fn delete_tag(
     state
         .tracing
         .trace_with(&trace, "delete_tag", "删除标签", || async {
-            let pool = state.db.pool();
+            let pool = state.db.sqlite();
             sqlx::query("DELETE FROM post_tags WHERE tag_id = ?")
                 .bind(req.tag_id)
                 .execute(pool)
@@ -390,7 +390,7 @@ async fn delete_comment(
     state
         .tracing
         .trace_with(&trace, "delete_comment", "删除评论", || async {
-            let pool = state.db.pool();
+            let pool = state.db.sqlite();
             sqlx::query("UPDATE comments SET status = 1 WHERE id = ?")
                 .bind(req.comment_id)
                 .execute(pool)
