@@ -22,11 +22,14 @@ fn encode_db_password(password: &str) -> String {
     out
 }
 
+#[cfg(any(feature = "db-ahrisqle", feature = "db-ahrisqls"))]
+pub use ahrisql::PoolBuilder;
+
 #[cfg(feature = "db-ahrisqle")]
-pub use ahrisql::pool::embedded::EmbeddedPool;
+pub use ahrisql::EmbeddedPool;
 
 #[cfg(feature = "db-ahrisqls")]
-pub use ahrisql::pool::Pool;
+pub use ahrisql::ClientPool;
 
 #[cfg(feature = "db-postgres")]
 pub use sqlx::postgres::PgPool;
@@ -99,7 +102,7 @@ pub struct Database {
     #[cfg(feature = "db-ahrisqle")]
     pub ahrisqle: EmbeddedPool,
     #[cfg(feature = "db-ahrisqls")]
-    pub ahrisqls: Pool,
+    pub ahrisqls: ClientPool,
     #[cfg(feature = "db-postgres")]
     pub pg: PgPool,
     #[cfg(feature = "db-sqlite")]
@@ -117,7 +120,7 @@ impl Database {
 
     /// 获取 AhriSQL 连接池引用
     #[cfg(feature = "db-ahrisqls")]
-    pub fn ahrisqls(&self) -> &Pool {
+    pub fn ahrisqls(&self) -> &ClientPool {
         &self.ahrisqls
     }
 
@@ -240,6 +243,8 @@ impl Database {
     }
 
     pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        #[cfg(feature = "db-ahrisqle")]
+        let ahrisqle: AhriSqleConfig = crate::state::extract(table, "ahrisqle")?;
         #[cfg(feature = "db-ahrisqls")]
         let ahrisqls: AhriSqlsConfig = crate::state::extract(table, "ahrisqls")?;
         #[cfg(feature = "db-postgres")]
@@ -267,7 +272,13 @@ impl Database {
     /// 建立 AhriSQL 连接池
     #[cfg(feature = "db-ahrisqle")]
     async fn connect_ahrisqle(config: &AhriSqleConfig) -> crate::Result<EmbeddedPool> {
-        EmbeddedPool::open(&config.path, &config.name, &config.user, &config.pass)
+        PoolBuilder::new()
+            .path(&config.path)
+            .user(&config.user)
+            .password(&config.pass)
+            .database(&config.name)
+            .max_connections(64)
+            .build_embedded()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
@@ -278,16 +289,21 @@ impl Database {
 
     /// 建立 AhriSQL 连接池
     #[cfg(feature = "db-ahrisqls")]
-    async fn connect_ahrisqls(config: &AhriSqlsConfig) -> crate::Result<Pool> {
-        let pool = Pool::builder()
+    async fn connect_ahrisqls(config: &AhriSqlsConfig) -> crate::Result<ClientPool> {
+        PoolBuilder::new()
             .host(&config.host)
             .port(config.port)
             .user(&config.user)
             .password(&config.pass)
             .database(&config.name)
             .max_connections(64)
-            .build();
-        Ok(pool)
+            .build_client()
+            .await
+            .map_err(|_e| {
+                #[cfg(feature = "log")]
+                tracing::error!({ code = 50901, msg = "Database connection failed" }, "AhriSQL: {}", _e);
+                connect_failed("AhriSQL")
+            })
     }
 
     /// 建立 PostgreSQL 连接池
