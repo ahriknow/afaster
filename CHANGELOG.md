@@ -4,7 +4,8 @@
 
 ### Added
 
-- **AhriSQL**: Add ahrisql support.
+- **CORS**: Add CORS support.
+- **Docs basic auth**: Add option basic auth to doc endpoint.
 
 ## [0.0.6]
 

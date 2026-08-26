@@ -9,8 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 afaster = { workspace = true, features = [
-    "db-ahrisqle",
-    "db-ahrisqls",
     "db-sqlite",
     "jwt",
     "argon2-hash",

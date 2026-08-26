@@ -314,7 +314,9 @@ async fn main() {
         .await
         .expect("初始化失败")
         .set_rbac(rbac)
+        .with_cors(afast::CorsConfig::permissive())
         .doc_title("Blog API Documentation")
+        .doc_basic_auth("username", "password")
         .generate(afast::GenerateTarget {
             lang: afast::Lang::TS(vec![afast::JsTsCallType::Fetch, afast::JsTsCallType::Ws]),
             path: std::path::PathBuf::from("example/client/ts"),

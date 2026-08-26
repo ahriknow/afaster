@@ -23,6 +23,8 @@ mod state;
 //  公共导出：核心
 // ═══════════════════════════════════════════════════════════════
 
+#[cfg(feature = "afast-http")]
+pub use afast::CorsConfig;
 pub use afast::Error as AfastError;
 #[cfg(feature = "afast-ordinary-http")]
 pub use afast::{Html, HttpResult, Json, Text};
@@ -204,10 +206,14 @@ use handler::health;
 pub struct AFaster {
     pub(crate) state: AppState,
     pub(crate) services: Vec<afast::Service>,
+    #[cfg(feature = "afast-http")]
+    pub(crate) cors_config: Option<afast::CorsConfig>,
     #[cfg(any(feature = "afast-ts", feature = "afast-js", feature = "afast-kt"))]
     pub(crate) generate_targets: Vec<afast::GenerateTarget>,
     #[cfg(feature = "afast-doc")]
     pub(crate) doc_title: Option<String>,
+    #[cfg(feature = "afast-doc")]
+    pub(crate) doc_basic_auth: Option<(String, String)>,
     #[cfg(feature = "ext")]
     pub(crate) states: Vec<Box<dyn std::any::Any + Send + Sync>>,
     pub(crate) security_headers: Option<Vec<(&'static str, &'static str)>>,
@@ -221,10 +227,14 @@ impl AFaster {
         Ok(Self {
             state: AppState::new(path).await?,
             services: Vec::new(),
+            #[cfg(feature = "afast-http")]
+            cors_config: None,
             #[cfg(any(feature = "afast-ts", feature = "afast-js", feature = "afast-kt"))]
             generate_targets: Vec::new(),
             #[cfg(feature = "afast-doc")]
             doc_title: None,
+            #[cfg(feature = "afast-doc")]
+            doc_basic_auth: None,
             #[cfg(feature = "ext")]
             states: Vec::new(),
             security_headers: None,
@@ -269,6 +279,17 @@ impl AFaster {
         self
     }
 
+    /// 设置 API 文档基本认证信息
+    #[cfg(feature = "afast-doc")]
+    pub fn doc_basic_auth(
+        mut self,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
+        self.doc_basic_auth = Some((username.into(), password.into()));
+        self
+    }
+
     /// 覆盖默认的安全响应头
     ///
     /// 默认值为 `x-content-type-options: nosniff`, `x-frame-options: DENY`,
@@ -288,6 +309,13 @@ impl AFaster {
     /// ```
     pub fn with_security_headers(mut self, headers: Vec<(&'static str, &'static str)>) -> Self {
         self.security_headers = Some(headers);
+        self
+    }
+
+    /// Sets CORS configuration for HTTP responses and preflight requests.
+    #[cfg(feature = "afast-http")]
+    pub fn with_cors(mut self, config: afast::CorsConfig) -> Self {
+        self.cors_config = Some(config);
         self
     }
 }
@@ -334,6 +362,11 @@ impl AFaster {
         }
 
         let mut app = AFast::new().state(state.clone()).service(health_svc);
+
+        #[cfg(feature = "afast-http")]
+        if let Some(cors_config) = self.cors_config {
+            app = app.cors(cors_config);
+        }
 
         // 安全响应头
         if let Some(headers) = self.security_headers {
@@ -401,10 +434,16 @@ impl AFaster {
         // 文档
         #[cfg(feature = "afast-doc")]
         {
-            app = app.document(afast::DocConfig {
-                title: Some(self.doc_title.unwrap_or_else(|| "AFaster API Docs".into())),
-                output: None,
-            });
+            let mut cfg = afast::DocConfig::with_title(
+                &self
+                    .doc_title
+                    .clone()
+                    .unwrap_or_else(|| "AFaster API Docs".into()),
+            );
+            if let Some((username, password)) = self.doc_basic_auth.clone() {
+                cfg = cfg.basic_auth(username, password);
+            }
+            app = app.document(cfg);
         }
 
         // 代码生成

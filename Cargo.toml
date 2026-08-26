@@ -1,6 +1,6 @@
 [package]
 name = "afaster"
-version = "0.0.6"
+version = "0.0.7"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -13,7 +13,7 @@ categories = ["web-programming", "asynchronous"]
 members = ["examples/email", "examples/amap", "examples/tmap", "examples/redis", "examples/scheduler", "examples/excel", "examples/pdf", "examples/image", "examples/file", "examples/argon2", "example"]
 
 [workspace.package]
-version = "0.0.6"
+version = "0.0.7"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -21,7 +21,7 @@ repository = "https://github.com/ahriknow/afaster"
 
 [workspace.dependencies]
 afaster = { path = ".", default-features = false }
-afast = { version = "0.1.23" }
+afast = { version = "0.1.25" }
 afastdata = { version = "0.0.10" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1" }
@@ -68,8 +68,6 @@ wx-pay-app = ["afast-ordinary-http", "reqwest", "dep:serde_json", "base64", "dep
 wx-pay-js-mini = ["afast-ordinary-http", "reqwest", "dep:serde_json", "base64", "dep:rsa", "dep:aes-gcm", "dep:pem", "dep:x509-certificate", "dep:sha2-v10", "dep:rand", "wx-pay-h5"]
 wx-pay-mini = ["wx-pay-js-mini"]
 wx-pay-js = ["wx-pay-js-mini"]
-db-ahrisqle = ["dep:ahrisql"]
-db-ahrisqls = ["dep:ahrisql"]
 db-postgres = ["sqlx/postgres"]
 db-sqlite = ["sqlx/sqlite"]
 db-mysql = ["sqlx/mysql"]
@@ -138,7 +136,6 @@ reqwest = { version = "0.13.3", features = ["json", "query"], optional = true }
 serde_json = { version = "1.0.149", optional = true }
 sha1 = { version = "0.11", optional = true }
 sha2 = { version = "0.11", optional = true }
-ahrisql = { version = "0.0.1", path = "../afastdb/ahrisql", optional = true }
 sqlx = { version = "0.9", features = ["runtime-tokio", "chrono"], optional = true }
 tracing = { version = "0.1", optional = true }
 tracing-appender = { version = "0.2", optional = true }

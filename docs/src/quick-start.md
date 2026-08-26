@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.6", features = ["jwt", "log", "redis"] }
+afaster = { version = "0.0.7", features = ["jwt", "log", "redis"] }
 ```
 
 ## 配置
@@ -30,6 +30,7 @@ async fn main() {
     AFaster::new("config.toml".to_string())
         .await
         .expect("初始化失败")
+        .with_cors(afast::CorsConfig::permissive())
         .run()
         .await;
 }
