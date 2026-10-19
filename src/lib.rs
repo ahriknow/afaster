@@ -223,9 +223,28 @@ pub struct AFaster {
 
 impl AFaster {
     /// 创建新的 AFaster 实例
+    ///
+    /// 等价于 `AppState::new(path)` + [`AFaster::from_state`]。
+    /// 若需要先单独初始化/调整 State，再构建 AFaster，请使用 [`AFaster::from_state`]。
     pub async fn new(path: String) -> crate::Result<Self> {
-        Ok(Self {
-            state: AppState::new(path).await?,
+        Ok(Self::from_state(AppState::new(path).await?))
+    }
+
+    /// 使用已初始化的 [`AppState`] 构建 AFaster 实例
+    ///
+    /// 用于先独立初始化 State（例如复用同一份 State、初始化后先做额外检查/调整），
+    /// 再交给 AFaster 运行。
+    ///
+    /// # 示例
+    /// ```rust,no_run
+    /// let state = afaster::AppState::new("Config.toml".into()).await?;
+    /// // ... 可在此单独使用/调整 state
+    /// let app = afaster::AFaster::from_state(state);
+    /// # Ok::<(), afaster::Error>(())
+    /// ```
+    pub fn from_state(state: AppState) -> Self {
+        Self {
+            state,
             services: Vec::new(),
             #[cfg(feature = "afast-http")]
             cors_config: None,
@@ -238,12 +257,17 @@ impl AFaster {
             #[cfg(feature = "ext")]
             states: Vec::new(),
             security_headers: None,
-        })
+        }
     }
 
     // 获取系统 AppState
     pub fn get_state(self) -> AppState {
         self.state
+    }
+
+    /// 借用当前状态（注册阶段读取已初始化的 state，如 `[file]` 的存储根目录）
+    pub fn state(&self) -> &AppState {
+        &self.state
     }
 
     /// 设置任意类型的全局状态
@@ -263,6 +287,11 @@ impl AFaster {
     pub fn services(mut self, svcs: Vec<afast::Service>) -> Self {
         self.services.extend(svcs);
         self
+    }
+
+    /// 已注册的服务名列表
+    pub fn service_names(&self) -> Vec<String> {
+        self.services.iter().map(|s| s.name.clone()).collect()
     }
 
     /// 添加代码生成目标
@@ -505,7 +534,11 @@ impl AFaster {
             app = app.ws(&addr);
         }
 
-        app.run().await.unwrap();
+        // 启动失败（如端口被占用）给出明确错误并退出，避免 unwrap panic
+        if let Err(e) = app.run().await {
+            eprintln!("afaster: 服务启动失败 [{}] {}", e.code(), e.message());
+            std::process::exit(1);
+        }
 
         #[cfg(feature = "log")]
         {

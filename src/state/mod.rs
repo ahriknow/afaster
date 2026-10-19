@@ -240,6 +240,8 @@ pub struct AppState {
     pub scheduler: scheduler::Scheduler,
     #[cfg(feature = "rate-limit")]
     pub rate_limit_config: rate_limit::RateLimitModuleConfig,
+    #[cfg(feature = "file")]
+    pub file: file::FileService,
     #[cfg(feature = "serve")]
     pub serve: Vec<serve::Serve>,
     #[cfg(feature = "redis")]
@@ -263,6 +265,8 @@ impl AppState {
             backend: backend.clone(),
             #[cfg(any(feature = "db-postgres", feature = "db-sqlite", feature = "db-mysql"))]
             db: database::Database::from_table(&table).await?,
+            #[cfg(feature = "file")]
+            file: file::FileService::from_table(&table)?,
             #[cfg(feature = "argon2-hash")]
             argon2: argon2::Argon2Hasher::new(),
             #[cfg(feature = "clock")]

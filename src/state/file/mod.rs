@@ -72,6 +72,17 @@ pub struct FileConfig {
     pub url_prefix: String,
 }
 
+impl Default for FileConfig {
+    fn default() -> Self {
+        Self {
+            root: default_root(),
+            max_size: default_max_size(),
+            allowed: Vec::new(),
+            url_prefix: default_url_prefix(),
+        }
+    }
+}
+
 /// 本地文件服务
 #[derive(Clone)]
 pub struct FileService {
@@ -86,6 +97,17 @@ pub struct FileService {
 // ═══════════════════════════════════════════════════════════════
 
 impl FileService {
+    /// 从配置表的 `[file]` 段创建（缺段走 `FileConfig::default()`），供 `AppState::new` 使用
+    pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let config: FileConfig = match table.get("file") {
+            Some(v) => v.clone().try_into().map_err(|e| {
+                crate::Error::custom(50001, format!("Invalid [file] config: {}", e))
+            })?,
+            None => FileConfig::default(),
+        };
+        Self::new(&config)
+    }
+
     /// 从配置创建文件服务，自动创建根目录
     pub fn new(config: &FileConfig) -> crate::Result<Self> {
         let root = PathBuf::from(&config.root);
@@ -256,6 +278,16 @@ impl FileService {
 
         let rel = self.relative_path(&safe_path);
         Ok(format!("{}/{}", self.url_prefix, rel))
+    }
+
+    /// 存储根目录（canonical 绝对路径）——静态挂载 / 目录遍历用
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// 访问 URL 前缀（如 `/files`）——拼接相对路径生成 URL 用
+    pub fn url_prefix(&self) -> &str {
+        &self.url_prefix
     }
 
     // ── 内部辅助 ──────────────────────────────────────────────────

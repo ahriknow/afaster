@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.8]
+
+### Added
+
+- **File Service**: Integrate `FileService` into `AppState` when the `file` feature is enabled. Read the optional `[file]` configuration section, apply defaults when it is absent, and expose the configured storage root and URL prefix.
+- **AFaster**: Add `AFaster::from_state` to build an application from an initialized `AppState`, along with `state()` and `service_names()` accessors.
+- **File Service**: Implement `Default` for `FileConfig`.
+
+### Changed
+
+- **AFaster**: Make `AFaster::new` delegate to `AFaster::from_state`.
+- **Startup**: Report service startup errors and exit with a non-zero status instead of panicking with `unwrap()`.
+- **Dependencies**: Upgrade `afast` to `0.1.26`.
+
 ## [0.0.7]
 
 ### Added
