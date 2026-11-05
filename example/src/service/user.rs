@@ -1,8 +1,10 @@
 //! 用户公开接口：注册、登录、浏览文章、分类、标签
 
+use crate::model::entities::{Category, Comment, Post, PostTag, Tag, User, UserFindBy as _};
 use crate::model::*;
 use afast::{Ctx, Data, State, handler};
 use afaster::trace::TraceContext;
+use afastorm::Field;
 
 // ── 注册 ──────────────────────────────────────────────────────
 
@@ -12,19 +14,19 @@ async fn register(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<RegisterReq>,
 ) -> afast::Result<ApiResp> {
-    let pool = state.db.sqlite();
-
-    let exists: (i64,) = {
+    let user = {
         let _s = state
             .tracing
             .span_with(&trace, "check_username", "检查用户名");
-        sqlx::query_as("SELECT COUNT(*) FROM users WHERE username = ?")
-            .bind(&req.username)
-            .fetch_one(pool)
+        state
+            .orm
+            .repo::<User>()
+            .map_err(|error| afaster::Error::custom(50002, error.to_string()))?
+            .find_by_username(req.username.clone())
             .await
             .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?
     };
-    if exists.0 > 0 {
+    if user.is_some() {
         return Ok(ApiResp::err(40001, "用户名已存在"));
     }
 
@@ -35,35 +37,36 @@ async fn register(
             .map_err(|e| afaster::Error::custom(52402, format!("Hash: {}", e)))?
     };
 
-    {
+    let user_id = {
         let _s = state.tracing.span_with(&trace, "insert_user", "写入用户");
-        sqlx::query(
-            "INSERT INTO users (username, nickname, email, password_hash) VALUES (?, ?, ?, ?)",
-        )
-        .bind(&req.username)
-        .bind(&req.nickname)
-        .bind(&req.email)
-        .bind(&hash)
-        .execute(pool)
-        .await
-        .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
-    }
-
-    let uid: (i64,) = {
-        let _s = state
-            .tracing
-            .span_with(&trace, "query_user_id", "查询用户ID");
-        sqlx::query_as("SELECT id FROM users WHERE username = ?")
-            .bind(&req.username)
-            .fetch_one(pool)
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mut user = User {
+            id: None,
+            username: req.username.clone(),
+            nickname: req.nickname.clone(),
+            email: req.email.clone(),
+            password_hash: hash,
+            avatar: String::new(),
+            bio: String::new(),
+            status: 0,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        state
+            .orm
+            .repo::<User>()
+            .map_err(|error| afaster::Error::custom(50002, error.to_string()))?
+            .insert(&mut user)
             .await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?
+            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
+        user.id
+            .ok_or_else(|| afaster::Error::custom(50002, "创建用户未返回 ID"))?
     };
 
     {
         let _s = state.tracing.span_with(&trace, "assign_role", "分配角色");
         if let Some(ref rbac) = state.rbac {
-            let _ = rbac.assign_role(uid.0, "user").await;
+            rbac.assign_role(user_id, "user").await?;
         }
     }
     Ok(ApiResp::ok("注册成功"))
@@ -77,16 +80,21 @@ async fn login(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<LoginReq>,
 ) -> afast::Result<LoginResp> {
-    let pool = state.db.sqlite();
-
-    let user: (i64, String, String, String, String, String, String, i32) = {
+    let user = {
         let _s = state.tracing.span_with(&trace, "db_query_user", "查询用户");
-        sqlx::query_as(
-            "SELECT id, username, nickname, email, password_hash, avatar, bio, status FROM users WHERE username = ?"
-        ).bind(&req.username).fetch_one(pool).await
-            .map_err(|_| afaster::Error::custom(40001, "用户名或密码错误"))?
+        state
+            .orm
+            .repo::<User>()
+            .map_err(|error| afaster::Error::custom(50002, error.to_string()))?
+            .find_by_username(req.username.clone())
+            .await
+            .map_err(|error| afaster::Error::custom(50002, error.to_string()))?
+            .ok_or_else(|| afaster::Error::custom(40001, "用户名或密码错误"))?
     };
-    if user.7 != 0 {
+    let user_id = user
+        .id
+        .ok_or_else(|| afaster::Error::custom(50002, "用户记录没有主键"))?;
+    if user.status != 0 {
         return Ok(LoginResp {
             code: 40003,
             message: "账号已被封禁".into(),
@@ -104,7 +112,7 @@ async fn login(
             .tracing
             .span_with(&trace, "verify_password", "验证密码");
         let valid = afaster::argon2::Argon2Hasher::new()
-            .verify(&req.password, &user.4)
+            .verify(&req.password, &user.password_hash)
             .map_err(|e| afaster::Error::custom(52402, format!("Verify: {}", e)))?;
         if !valid {
             return Ok(LoginResp {
@@ -125,8 +133,8 @@ async fn login(
             .tracing
             .span_with(&trace, "query_permissions", "查询权限");
         if let Some(ref rbac) = state.rbac {
-            let r = rbac.get_user_roles(user.0).await.unwrap_or_default();
-            let p = rbac.get_user_permissions(user.0).await.unwrap_or_default();
+            let r = rbac.get_user_roles(user_id).await.unwrap_or_default();
+            let p = rbac.get_user_permissions(user_id).await.unwrap_or_default();
             (r.iter().map(|x| x.name.clone()).collect(), p)
         } else {
             (vec![], vec![])
@@ -140,12 +148,12 @@ async fn login(
         state
             .token
             .create_token(
-                user.0,
+                user_id,
                 afaster::token::Data1 {
-                    id: user.0,
-                    username: user.1.clone(),
-                    nickname: user.2.clone(),
-                    avatar: user.5.clone(),
+                    id: user_id,
+                    username: user.username.clone(),
+                    nickname: user.nickname.clone(),
+                    avatar: user.avatar.clone(),
                     is_super: roles.contains(&"super_admin".to_string()),
                 },
             )
@@ -156,9 +164,9 @@ async fn login(
         code: 0,
         message: "登录成功".into(),
         token,
-        user_id: user.0,
-        username: user.1,
-        nickname: user.2,
+        user_id,
+        username: user.username,
+        nickname: user.nickname,
         roles,
         permissions,
     })
@@ -172,59 +180,52 @@ async fn list_posts(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<ListPostsReq>,
 ) -> afast::Result<PostListResp> {
-    let pool = state.db.sqlite();
     let page = req.page.max(1);
     let page_size = req.page_size.clamp(1, 100);
     let offset = (page - 1) * page_size;
 
-    let total: (i64,) = {
+    let repository = state.orm.repo::<Post>().map_err(db_error)?;
+    let total = {
         let _s = state.tracing.span_with(&trace, "count_posts", "统计文章");
-        sqlx::query_as("SELECT COUNT(*) FROM posts WHERE status = 2")
-            .fetch_one(pool)
+        repository
+            .count_where(Field::new("status").eq(2))
             .await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?
+            .map_err(db_error)?
     };
 
-    let rows: Vec<(
-        i64,
-        i64,
-        Option<i64>,
-        String,
-        String,
-        String,
-        i32,
-        i64,
-        i64,
-        String,
-        Option<String>,
-    )> = {
+    let rows = {
         let _s = state
             .tracing
             .span_with(&trace, "query_posts", "查询文章列表");
-        sqlx::query_as(
-            "SELECT id, author_id, category_id, title, summary, content, status, view_count, like_count, created_at, published_at FROM posts WHERE status = 2 ORDER BY published_at DESC LIMIT ? OFFSET ?"
-        ).bind(page_size).bind(offset).fetch_all(pool).await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?
+        let statement = repository
+            .query()
+            .filter(Field::new("status").eq(2))
+            .order_by(Post::published_at.desc())
+            .limit(page_size as u64)
+            .offset(offset as u64)
+            .build()
+            .map_err(db_error)?;
+        repository.fetch_all(&statement).await.map_err(db_error)?
     };
 
     Ok(PostListResp {
         code: 0,
-        total: total.0,
+        total,
         page,
         page_size,
         data: rows
             .into_iter()
-            .map(|r| PostItem {
-                id: r.0,
-                author_id: r.1,
-                category_id: r.2.unwrap_or(0),
-                title: r.3,
-                summary: r.4,
-                status: r.6,
-                view_count: r.7,
-                like_count: r.8,
-                created_at: r.9,
-                published_at: r.10.unwrap_or_default(),
+            .map(|post| PostItem {
+                id: post.id.unwrap_or_default(),
+                author_id: post.author_id,
+                category_id: post.category_id.unwrap_or_default(),
+                title: post.title,
+                summary: post.summary,
+                status: post.status,
+                view_count: post.view_count,
+                like_count: post.like_count,
+                created_at: post.created_at,
+                published_at: post.published_at.unwrap_or_default(),
             })
             .collect(),
     })
@@ -238,81 +239,87 @@ async fn get_post(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<PostIdReq>,
 ) -> afast::Result<PostDetailResp> {
-    let pool = state.db.sqlite();
-
-    {
+    let post = {
         let _s = state
             .tracing
             .span_with(&trace, "update_views", "更新浏览量");
-        sqlx::query("UPDATE posts SET view_count = view_count + 1 WHERE id = ? AND status = 2")
+        state
+            .orm
+            .query("UPDATE posts SET view_count = view_count + 1 WHERE id = ? AND status = 2")
             .bind(req.post_id)
-            .execute(pool)
+            .execute()
             .await
-            .ok();
-    }
-
-    let p: (
-        i64,
-        i64,
-        Option<i64>,
-        String,
-        String,
-        String,
-        String,
-        i32,
-        i64,
-        i64,
-        bool,
-        String,
-        String,
-        Option<String>,
-    ) = {
-        let _s = state.tracing.span_with(&trace, "query_post", "查询文章");
-        sqlx::query_as(
-            "SELECT id, author_id, category_id, title, slug, summary, content, status, view_count, like_count, is_pinned, created_at, updated_at, published_at FROM posts WHERE id = ? AND status = 2"
-        ).bind(req.post_id).fetch_one(pool).await
-            .map_err(|_| afaster::Error::custom(40001, "文章不存在"))?
+            .map_err(db_error)?;
+        state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .find_by_id(req.post_id)
+            .await
+            .map_err(db_error)?
+            .filter(|post| post.status == 2)
+            .ok_or_else(|| afaster::Error::custom(40001, "文章不存在"))?
     };
 
-    let tags: Vec<(String,)> = {
+    let tags = {
         let _s = state.tracing.span_with(&trace, "query_tags", "查询标签");
-        sqlx::query_as(
-            "SELECT t.name FROM tags t JOIN post_tags pt ON t.id = pt.tag_id WHERE pt.post_id = ?",
-        )
-        .bind(req.post_id)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default()
+        let statement = state
+            .orm
+            .repo::<PostTag>()
+            .map_err(db_error)?
+            .query()
+            .filter(Field::new("post_id").eq(req.post_id))
+            .build()
+            .map_err(db_error)?;
+        let links = state
+            .orm
+            .fetch_all::<PostTag>(&statement)
+            .await
+            .map_err(db_error)?;
+        let repository = state.orm.repo::<Tag>().map_err(db_error)?;
+        let mut names = Vec::new();
+        for link in links {
+            if let Some(tag) = repository.find_by_id(link.tag_id).await.map_err(db_error)? {
+                names.push(tag.name);
+            }
+        }
+        names
     };
 
-    let comment_count: (i64,) = {
+    let comment_count = {
         let _s = state
             .tracing
             .span_with(&trace, "count_comments", "统计评论");
-        sqlx::query_as("SELECT COUNT(*) FROM comments WHERE post_id = ? AND status = 0")
-            .bind(req.post_id)
-            .fetch_one(pool)
+        state
+            .orm
+            .repo::<Comment>()
+            .map_err(db_error)?
+            .count_where(
+                Field::new("post_id")
+                    .eq(req.post_id)
+                    .and(Field::new("status").eq(0)),
+            )
             .await
-            .unwrap_or((0,))
+            .map_err(db_error)?
     };
 
     Ok(PostDetailResp {
         code: 0,
-        id: p.0,
-        author_id: p.1,
-        category_id: p.2.unwrap_or(0),
-        title: p.3,
-        slug: p.4,
-        summary: p.5,
-        content: p.6,
-        status: p.7,
-        view_count: p.8,
-        like_count: p.9,
-        is_pinned: p.10,
-        created_at: p.11,
-        published_at: p.13.unwrap_or_default(),
-        tags: tags.into_iter().map(|t| t.0).collect(),
-        comment_count: comment_count.0,
+        id: post.id.unwrap_or_default(),
+        author_id: post.author_id,
+        category_id: post.category_id.unwrap_or_default(),
+        title: post.title,
+        slug: post.slug,
+        summary: post.summary,
+        content: post.content,
+        status: post.status,
+        view_count: post.view_count,
+        like_count: post.like_count,
+        is_pinned: post.is_pinned,
+        created_at: post.created_at,
+        published_at: post.published_at.unwrap_or_default(),
+        tags,
+        comment_count,
     })
 }
 
@@ -323,25 +330,34 @@ async fn list_categories(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<CategoryListResp> {
-    let pool = state.db.sqlite();
-    let rows: Vec<(i64, String, String, String, i32)> = {
+    let rows = {
         let _s = state
             .tracing
             .span_with(&trace, "query_categories", "查询分类");
-        sqlx::query_as("SELECT id, name, slug, description, sort_order FROM categories ORDER BY sort_order ASC")
-            .fetch_all(pool).await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?
+        let statement = state
+            .orm
+            .repo::<Category>()
+            .map_err(db_error)?
+            .query()
+            .order_by(Category::sort_order.asc())
+            .build()
+            .map_err(db_error)?;
+        state
+            .orm
+            .fetch_all::<Category>(&statement)
+            .await
+            .map_err(db_error)?
     };
     Ok(CategoryListResp {
         code: 0,
         data: rows
             .into_iter()
-            .map(|r| CategoryItem {
-                id: r.0,
-                name: r.1,
-                slug: r.2,
-                description: r.3,
-                sort_order: r.4,
+            .map(|row| CategoryItem {
+                id: row.id.unwrap_or_default(),
+                name: row.name,
+                slug: row.slug,
+                description: row.description,
+                sort_order: row.sort_order,
             })
             .collect(),
     })
@@ -352,22 +368,30 @@ async fn list_tags(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<TagListResp> {
-    let pool = state.db.sqlite();
-    let rows: Vec<(i64, String, String)> = {
+    let rows = {
         let _s = state.tracing.span_with(&trace, "query_tags", "查询标签");
-        sqlx::query_as("SELECT id, name, slug FROM tags ORDER BY id ASC")
-            .fetch_all(pool)
+        let statement = state
+            .orm
+            .repo::<Tag>()
+            .map_err(db_error)?
+            .query()
+            .order_by(Tag::id.asc())
+            .build()
+            .map_err(db_error)?;
+        state
+            .orm
+            .fetch_all::<Tag>(&statement)
             .await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?
+            .map_err(db_error)?
     };
     Ok(TagListResp {
         code: 0,
         data: rows
             .into_iter()
-            .map(|r| TagItem {
-                id: r.0,
-                name: r.1,
-                slug: r.2,
+            .map(|row| TagItem {
+                id: row.id.unwrap_or_default(),
+                name: row.name,
+                slug: row.slug,
             })
             .collect(),
     })
@@ -381,19 +405,20 @@ async fn dashboard(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<DashboardReq>,
 ) -> afast::Result<DashboardResp> {
-    let pool = state.db.sqlite();
     let trace_id = &trace.trace_id;
     let root_span_id = &trace.span_id;
     let t0 = now_ms();
     let mut cursor = t0;
 
     let s1_id = uuid();
-    let user_info: Option<(i64, String, String)> =
-        sqlx::query_as("SELECT id, username, nickname FROM users WHERE id = ? AND status = 0")
-            .bind(req.user_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
+    let user_info = state
+        .orm
+        .repo::<User>()
+        .map_err(db_error)?
+        .find_by_id(req.user_id)
+        .await
+        .map_err(db_error)?
+        .filter(|user| user.status == 0);
     let d1 = now_ms() - cursor;
     report_span_dur(
         &state,
@@ -410,16 +435,20 @@ async fn dashboard(
     cursor += d1;
 
     let s2_id = uuid();
-    let post_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM posts WHERE author_id = ?")
-        .bind(req.user_id)
-        .fetch_one(pool)
+    let post_count = state
+        .orm
+        .repo::<Post>()
+        .map_err(db_error)?
+        .count_where(Field::new("author_id").eq(req.user_id))
         .await
-        .unwrap_or((0,));
-    let comment_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM comments WHERE author_id = ?")
-        .bind(req.user_id)
-        .fetch_one(pool)
+        .map_err(db_error)?;
+    let comment_count = state
+        .orm
+        .repo::<Comment>()
+        .map_err(db_error)?
+        .count_where(Field::new("author_id").eq(req.user_id))
         .await
-        .unwrap_or((0,));
+        .map_err(db_error)?;
     let d2 = now_ms() - cursor;
     report_span_dur(
         &state,
@@ -436,9 +465,18 @@ async fn dashboard(
     cursor += d2;
 
     let s3_id = uuid();
-    let rows: Vec<(i64, i64, Option<i64>, String, String, String, i32, i64, i64, String, Option<String>)> = sqlx::query_as(
-        "SELECT id, author_id, category_id, title, summary, '', status, view_count, like_count, created_at, published_at FROM posts WHERE author_id = ? ORDER BY created_at DESC LIMIT 5",
-    ).bind(req.user_id).fetch_all(pool).await.map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
+    let post_repository = state.orm.repo::<Post>().map_err(db_error)?;
+    let recent_posts_statement = post_repository
+        .query()
+        .filter(Field::new("author_id").eq(req.user_id))
+        .order_by(Post::created_at.desc())
+        .limit(5)
+        .build()
+        .map_err(db_error)?;
+    let rows = post_repository
+        .fetch_all(&recent_posts_statement)
+        .await
+        .map_err(db_error)?;
     let d3 = now_ms() - cursor;
     report_span_dur(
         &state,
@@ -455,12 +493,19 @@ async fn dashboard(
     cursor += d3;
 
     let s4_id = uuid();
-    let cat_rows: Vec<(i64, String, String, String, i32)> = sqlx::query_as(
-        "SELECT id, name, slug, description, sort_order FROM categories ORDER BY sort_order ASC",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
+    let categories_statement = state
+        .orm
+        .repo::<Category>()
+        .map_err(db_error)?
+        .query()
+        .order_by(Category::sort_order.asc())
+        .build()
+        .map_err(db_error)?;
+    let cat_rows = state
+        .orm
+        .fetch_all::<Category>(&categories_statement)
+        .await
+        .map_err(db_error)?;
     let d4 = now_ms() - cursor;
     report_span_dur(
         &state,
@@ -477,11 +522,19 @@ async fn dashboard(
     cursor += d4;
 
     let s5_id = uuid();
-    let tag_rows: Vec<(i64, String, String)> =
-        sqlx::query_as("SELECT id, name, slug FROM tags ORDER BY id ASC")
-            .fetch_all(pool)
-            .await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
+    let tags_statement = state
+        .orm
+        .repo::<Tag>()
+        .map_err(db_error)?
+        .query()
+        .order_by(Tag::id.asc())
+        .build()
+        .map_err(db_error)?;
+    let tag_rows = state
+        .orm
+        .fetch_all::<Tag>(&tags_statement)
+        .await
+        .map_err(db_error)?;
     let d5 = now_ms() - cursor;
     report_span_dur(
         &state,
@@ -498,18 +551,27 @@ async fn dashboard(
     cursor += d5;
 
     let s6_id = uuid();
-    let total_posts: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM posts")
-        .fetch_one(pool)
+    let total_posts = state
+        .orm
+        .repo::<Post>()
+        .map_err(db_error)?
+        .count()
         .await
-        .unwrap_or((0,));
-    let total_users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(pool)
+        .map_err(db_error)?;
+    let total_users = state
+        .orm
+        .repo::<User>()
+        .map_err(db_error)?
+        .count()
         .await
-        .unwrap_or((0,));
-    let total_comments: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM comments")
-        .fetch_one(pool)
+        .map_err(db_error)?;
+    let total_comments = state
+        .orm
+        .repo::<Comment>()
+        .map_err(db_error)?
+        .count()
         .await
-        .unwrap_or((0,));
+        .map_err(db_error)?;
     let d6 = now_ms() - cursor;
     report_span_dur(
         &state,
@@ -526,46 +588,46 @@ async fn dashboard(
     cursor += d6;
 
     let s7_id = uuid();
-    let dashboard_user = user_info.map(|u| DashboardUser {
-        id: u.0,
-        username: u.1,
-        nickname: u.2,
-        post_count: post_count.0,
-        comment_count: comment_count.0,
+    let dashboard_user = user_info.map(|user| DashboardUser {
+        id: user.id.unwrap_or_default(),
+        username: user.username,
+        nickname: user.nickname,
+        post_count,
+        comment_count,
     });
     let recent_posts = rows
         .into_iter()
-        .map(|r| PostItem {
-            id: r.0,
-            author_id: r.1,
-            category_id: r.2.unwrap_or(0),
-            title: r.3,
-            summary: r.4,
-            status: r.6,
-            view_count: r.7,
-            like_count: r.8,
-            created_at: r.9,
-            published_at: r.10.unwrap_or_default(),
+        .map(|post| PostItem {
+            id: post.id.unwrap_or_default(),
+            author_id: post.author_id,
+            category_id: post.category_id.unwrap_or_default(),
+            title: post.title,
+            summary: post.summary,
+            status: post.status,
+            view_count: post.view_count,
+            like_count: post.like_count,
+            created_at: post.created_at,
+            published_at: post.published_at.unwrap_or_default(),
         })
         .collect();
     let total_categories = cat_rows.len() as i64;
     let total_tags = tag_rows.len() as i64;
     let categories = cat_rows
         .into_iter()
-        .map(|r| CategoryItem {
-            id: r.0,
-            name: r.1,
-            slug: r.2,
-            description: r.3,
-            sort_order: r.4,
+        .map(|row| CategoryItem {
+            id: row.id.unwrap_or_default(),
+            name: row.name,
+            slug: row.slug,
+            description: row.description,
+            sort_order: row.sort_order,
         })
         .collect();
     let tags = tag_rows
         .into_iter()
-        .map(|r| TagItem {
-            id: r.0,
-            name: r.1,
-            slug: r.2,
+        .map(|row| TagItem {
+            id: row.id.unwrap_or_default(),
+            name: row.name,
+            slug: row.slug,
         })
         .collect();
     let d7 = now_ms() - cursor;
@@ -589,9 +651,9 @@ async fn dashboard(
         categories,
         tags,
         stats: DashboardStats {
-            total_posts: total_posts.0,
-            total_users: total_users.0,
-            total_comments: total_comments.0,
+            total_posts,
+            total_users,
+            total_comments,
             total_categories,
             total_tags,
         },
@@ -638,8 +700,6 @@ async fn generate_report(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<DataReportResp> {
-    let pool = state.db.sqlite();
-
     // ── Level 1: 验证输入 ──
     {
         let _s = state
@@ -655,49 +715,69 @@ async fn generate_report(
             .span_with(&trace, "fetch_all_data", "获取全部数据");
         let ctx1 = s1.child_ctx();
 
-        let total_users: (i64,) = {
+        let total_users = {
             let _s = state.tracing.span_with(&ctx1, "query_users", "查询用户数");
-            sqlx::query_as("SELECT COUNT(*) FROM users")
-                .fetch_one(pool)
+            state
+                .orm
+                .repo::<User>()
+                .map_err(db_error)?
+                .count()
                 .await
-                .unwrap_or((0,))
+                .map_err(db_error)?
         };
-        let total_posts: (i64,) = {
+        let total_posts = {
             let _s = state.tracing.span_with(&ctx1, "query_posts", "查询文章数");
-            sqlx::query_as("SELECT COUNT(*) FROM posts")
-                .fetch_one(pool)
+            state
+                .orm
+                .repo::<Post>()
+                .map_err(db_error)?
+                .count()
                 .await
-                .unwrap_or((0,))
+                .map_err(db_error)?
         };
-        let total_comments: (i64,) = {
+        let total_comments = {
             let _s = state
                 .tracing
                 .span_with(&ctx1, "query_comments", "查询评论数");
             tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-            sqlx::query_as("SELECT COUNT(*) FROM comments")
-                .fetch_one(pool)
+            state
+                .orm
+                .repo::<Comment>()
+                .map_err(db_error)?
+                .count()
                 .await
-                .unwrap_or((0,))
+                .map_err(db_error)?
         };
-        let users: Vec<(i64, String, String)> = {
+        let users = {
             let _s = state
                 .tracing
                 .span_with(&ctx1, "query_user_list", "查询用户列表");
-            sqlx::query_as("SELECT id, username, nickname FROM users LIMIT 10")
-                .fetch_all(pool)
+            let statement = state
+                .orm
+                .repo::<User>()
+                .map_err(db_error)?
+                .query()
+                .limit(10)
+                .build()
+                .map_err(db_error)?;
+            state
+                .orm
+                .fetch_all::<User>(&statement)
                 .await
-                .unwrap_or_default()
+                .map_err(db_error)?
         };
-        let posts: Vec<(i64, String, i64, i64)> = {
+        let posts = {
             let _s = state
                 .tracing
                 .span_with(&ctx1, "query_post_list", "查询文章列表");
-            sqlx::query_as(
-                "SELECT id, title, view_count, like_count FROM posts WHERE status = 2 LIMIT 10",
-            )
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default()
+            let repository = state.orm.repo::<Post>().map_err(db_error)?;
+            let statement = repository
+                .query()
+                .filter(Field::new("status").eq(2))
+                .limit(10)
+                .build()
+                .map_err(db_error)?;
+            repository.fetch_all(&statement).await.map_err(db_error)?
         };
 
         (total_users, total_posts, total_comments, users, posts)
@@ -723,7 +803,8 @@ async fn generate_report(
                 if posts.is_empty() {
                     0.0
                 } else {
-                    posts.iter().map(|p| p.2 as f64).sum::<f64>() / posts.len() as f64
+                    posts.iter().map(|post| post.view_count as f64).sum::<f64>()
+                        / posts.len() as f64
                 }
             };
             let avg_likes = {
@@ -733,7 +814,8 @@ async fn generate_report(
                 if posts.is_empty() {
                     0.0
                 } else {
-                    posts.iter().map(|p| p.3 as f64).sum::<f64>() / posts.len() as f64
+                    posts.iter().map(|post| post.like_count as f64).sum::<f64>()
+                        / posts.len() as f64
                 }
             };
             let engagement_rate = {
@@ -763,18 +845,18 @@ async fn generate_report(
             tokio::time::sleep(std::time::Duration::from_millis(1)).await;
             posts
                 .into_iter()
-                .filter(|p| p.2 > 0)
-                .map(|p| PostItem {
-                    id: p.0,
-                    author_id: 0,
-                    category_id: 0,
-                    title: p.1,
-                    summary: String::new(),
-                    status: 2,
-                    view_count: p.2,
-                    like_count: p.3,
-                    created_at: String::new(),
-                    published_at: String::new(),
+                .filter(|post| post.view_count > 0)
+                .map(|post| PostItem {
+                    id: post.id.unwrap_or_default(),
+                    author_id: post.author_id,
+                    category_id: post.category_id.unwrap_or_default(),
+                    title: post.title,
+                    summary: post.summary,
+                    status: post.status,
+                    view_count: post.view_count,
+                    like_count: post.like_count,
+                    created_at: post.created_at,
+                    published_at: post.published_at.unwrap_or_default(),
                 })
                 .collect::<Vec<_>>()
         };
@@ -785,9 +867,9 @@ async fn generate_report(
             tokio::time::sleep(std::time::Duration::from_millis(1)).await;
             format!(
                 "共 {} 用户, {} 文章, {} 评论, 平均浏览 {:.1}, 互动率 {}%",
-                total_users.0,
-                total_posts.0,
-                total_comments.0,
+                total_users,
+                total_posts,
+                total_comments,
                 metrics.avg_views,
                 metrics.engagement_rate
             )
@@ -806,15 +888,15 @@ async fn generate_report(
 
     Ok(DataReportResp {
         code: 0,
-        total_users: total_users.0,
-        total_posts: total_posts.0,
-        total_comments: total_comments.0,
+        total_users,
+        total_posts,
+        total_comments,
         users: users
             .into_iter()
-            .map(|u| DashboardUser {
-                id: u.0,
-                username: u.1,
-                nickname: u.2,
+            .map(|user| DashboardUser {
+                id: user.id.unwrap_or_default(),
+                username: user.username,
+                nickname: user.nickname,
                 post_count: 0,
                 comment_count: 0,
             })
@@ -843,6 +925,10 @@ fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
+fn db_error(error: impl std::fmt::Display) -> afast::Error {
+    afaster::Error::custom(50002, format!("DB: {error}")).into()
+}
+
 // ── 支付模拟（错误链路测试） ──────────────────────────────────────
 
 #[handler(desc("支付模拟 - 含错误"))]
@@ -851,17 +937,17 @@ async fn simulate_payment(
     Ctx(trace): Ctx<TraceContext>,
     Data(req): Data<PostIdReq>,
 ) -> afast::Result<ApiResp> {
-    let pool = state.db.sqlite();
-
     // ✅ 查询订单
     let post = {
         let _s = state.tracing.span_with(&trace, "query_order", "查询订单");
         tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-        sqlx::query_as::<_, (i64, String)>("SELECT id, title FROM posts WHERE id = ?")
-            .bind(req.post_id)
-            .fetch_optional(pool)
+        state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .find_by_id(req.post_id)
             .await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?
+            .map_err(db_error)?
     };
 
     let _post = post.ok_or_else(|| afaster::Error::custom(40004, "订单不存在"))?;
@@ -888,34 +974,38 @@ async fn batch_query(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<ApiResp> {
-    let pool = state.db.sqlite();
-
     // ✅ 查询用户
     {
         let _s = state.tracing.span_with(&trace, "query_users", "查询用户");
         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-        let _: Vec<(i64,)> = sqlx::query_as("SELECT id FROM users LIMIT 5")
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
+        let statement = state
+            .orm
+            .repo::<User>()
+            .map_err(db_error)?
+            .query()
+            .limit(5)
+            .build()
+            .map_err(db_error)?;
+        let _: Vec<User> = state.orm.fetch_all(&statement).await.map_err(db_error)?;
     }
 
     // ✅ 查询文章
     {
         let _s = state.tracing.span_with(&trace, "query_posts", "查询文章");
         tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-        let _: Vec<(i64,)> = sqlx::query_as("SELECT id FROM posts LIMIT 5")
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
+        let repository = state.orm.repo::<Post>().map_err(db_error)?;
+        let statement = repository.query().limit(5).build().map_err(db_error)?;
+        let _: Vec<Post> = repository.fetch_all(&statement).await.map_err(db_error)?;
     }
 
     // ❌ 查询不存在的表
     {
         let mut _s = state.tracing.span_with(&trace, "query_orders", "查询订单");
         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-        let result = sqlx::query_as::<_, (i64,)>("SELECT id FROM orders LIMIT 5")
-            .fetch_all(pool)
+        let result = state
+            .orm
+            .query_as::<(i64,)>("SELECT id FROM orders LIMIT 5")
+            .fetch_all()
             .await;
         if result.is_err() {
             _s.set_error(50002, "表 orders 不存在");
@@ -927,10 +1017,15 @@ async fn batch_query(
         let _s = state
             .tracing
             .span_with(&trace, "query_comments", "查询评论");
-        let _: Vec<(i64,)> = sqlx::query_as("SELECT id FROM comments LIMIT 5")
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
+        let statement = state
+            .orm
+            .repo::<Comment>()
+            .map_err(db_error)?
+            .query()
+            .limit(5)
+            .build()
+            .map_err(db_error)?;
+        let _: Vec<Comment> = state.orm.fetch_all(&statement).await.map_err(db_error)?;
     }
 
     Ok(ApiResp::ok("批量查询完成（部分失败）"))

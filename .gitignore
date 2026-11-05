@@ -5,6 +5,7 @@
 /examples/**/config.toml
 /acme_cache
 /data
+/migrations
 docs/book
 /*.db
 /*.db-shm

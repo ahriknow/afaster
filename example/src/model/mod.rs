@@ -1,4 +1,6 @@
 //! 数据模型 — 所有请求/响应类型均 derive AFastSerialize + AFastDeserialize + Tag
+pub mod entities;
+
 use serde::{Deserialize, Serialize};
 
 // ═══════════════════════════════════════════════════════════════

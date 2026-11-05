@@ -49,23 +49,20 @@ impl RbacStore for MyRbacStore {
 }
 ```
 
-### 2. 创建 Rbac 实例
+### 2. 通过 callback 配置 RBAC
 
 ```rust
-let rbac = Rbac::new(MyRbacStore { pool });
+use afaster::{AFaster, AFasterRbacExt};
+
+let app = AFaster::new("config.toml".to_string())
+    .await?
+    .with_rbac(|rbac| rbac.with_store(MyRbacStore { pool }))?;
 ```
 
-### 3. 配合 AFaster 使用
+`.with_rbac` 接收配置闭包；在其中调用 `.with_store(...)` 指定实现 `RbacStore` 的存储。
+未配置存储时会返回错误。
 
-```rust
-AFaster::new("config.toml".to_string()).await
-    .unwrap()
-    .set_rbac(rbac)
-    .run()
-    .await;
-```
-
-### 4. 在 handler 中使用
+### 3. 在 handler 中使用
 
 ```rust
 #[handler]

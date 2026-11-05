@@ -173,6 +173,7 @@ impl TracingService {
     }
 
     /// 上报子 span（handler 内部调用，用于构建多层 trace 链路）
+    #[allow(clippy::too_many_arguments)]
     pub async fn report_child_span(
         &self,
         trace_id: &str,

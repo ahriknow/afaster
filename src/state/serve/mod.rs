@@ -245,10 +245,9 @@ impl Serve {
                 }
             }
             #[cfg(feature = "serve-embed")]
-            ServeSource::Embedded(dir) => match dir.get_file(&path) {
-                Some(file) => Some((file.contents().to_vec(), mime)),
-                None => None,
-            },
+            ServeSource::Embedded(dir) => dir
+                .get_file(&path)
+                .map(|file| (file.contents().to_vec(), mime)),
         }
     }
 }
@@ -272,10 +271,10 @@ pub async fn serve_handler(
     }
 
     for serve in serves {
-        if path_matches_prefix(&path, &serve.prefix) {
-            if let Some((data, content_type)) = serve.resolve(&path) {
-                return Ok(afast::Serve { data, content_type });
-            }
+        if path_matches_prefix(&path, &serve.prefix)
+            && let Some((data, content_type)) = serve.resolve(&path)
+        {
+            return Ok(afast::Serve { data, content_type });
         }
     }
 

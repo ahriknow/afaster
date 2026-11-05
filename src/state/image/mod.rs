@@ -29,19 +29,14 @@ use imageproc::rect::Rect;
 // ─── 输出格式 ──────────────────────────────────────────────────────
 
 /// 图片输出格式
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ImageFormat {
+    #[default]
     Png,
     Jpeg(u8), // 质量 1~100
     WebP,     // 仅支持无损
     Bmp,
     Gif,
-}
-
-impl Default for ImageFormat {
-    fn default() -> Self {
-        Self::Png
-    }
 }
 
 // ─── 颜色 ──────────────────────────────────────────────────────────
@@ -76,7 +71,7 @@ impl ImageColor {
         Self(0, 0, 0, 0)
     }
 
-    fn to_rgba(&self) -> Rgba<u8> {
+    fn to_rgba(self) -> Rgba<u8> {
         Rgba([self.0, self.1, self.2, self.3])
     }
 }
@@ -373,9 +368,9 @@ impl Image {
         let bold_bytes = self.font_bold.as_deref().unwrap_or(regular_bytes);
 
         let font_regular = FontRef::try_from_slice(regular_bytes)
-            .map_err(|e| crate::Error::custom(51801, &format!("Regular font error: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51801, format!("Regular font error: {}", e)))?;
         let font_bold = FontRef::try_from_slice(bold_bytes)
-            .map_err(|e| crate::Error::custom(51801, &format!("Bold font error: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51801, format!("Bold font error: {}", e)))?;
 
         // 按顺序渲染元素
         for elem in &self.elements {
@@ -465,7 +460,7 @@ fn encode_image(
                 height,
                 image::ExtendedColorType::Rgba8,
             )
-            .map_err(|e| crate::Error::custom(51802, &format!("PNG encode error: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51802, format!("PNG encode error: {}", e)))?;
         }
         ImageFormat::Jpeg(quality) => {
             // JPEG 不支持 Alpha，转为 RGB
@@ -478,7 +473,7 @@ fn encode_image(
                 height,
                 image::ExtendedColorType::Rgb8,
             )
-            .map_err(|e| crate::Error::custom(51802, &format!("JPEG encode error: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51802, format!("JPEG encode error: {}", e)))?;
         }
         ImageFormat::WebP => {
             let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut buf);
@@ -489,7 +484,7 @@ fn encode_image(
                 height,
                 image::ExtendedColorType::Rgba8,
             )
-            .map_err(|e| crate::Error::custom(51802, &format!("WebP encode error: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51802, format!("WebP encode error: {}", e)))?;
         }
         ImageFormat::Bmp => {
             // BMP 不支持 Alpha，转为 RGB
@@ -502,13 +497,13 @@ fn encode_image(
                 height,
                 image::ExtendedColorType::Rgb8,
             )
-            .map_err(|e| crate::Error::custom(51802, &format!("BMP encode error: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51802, format!("BMP encode error: {}", e)))?;
         }
         ImageFormat::Gif => {
             let mut encoder = image::codecs::gif::GifEncoder::new(&mut buf);
             encoder
                 .encode_frame(image::Frame::new(img.clone()))
-                .map_err(|e| crate::Error::custom(51802, &format!("GIF encode error: {}", e)))?;
+                .map_err(|e| crate::Error::custom(51802, format!("GIF encode error: {}", e)))?;
         }
     }
 

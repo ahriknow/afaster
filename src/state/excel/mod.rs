@@ -165,7 +165,7 @@ fn csv_read_bytes(data: &[u8]) -> crate::Result<Vec<Vec<CellValue>>> {
     let mut rows = Vec::new();
     for result in rdr.records() {
         let record =
-            result.map_err(|e| crate::Error::custom(51604, &format!("CSV parse error: {}", e)))?;
+            result.map_err(|e| crate::Error::custom(51604, format!("CSV parse error: {}", e)))?;
         let row: Vec<CellValue> = record.iter().map(csv_parse_value).collect();
         rows.push(row);
     }
@@ -175,7 +175,7 @@ fn csv_read_bytes(data: &[u8]) -> crate::Result<Vec<Vec<CellValue>>> {
 /// CSV 文件路径 → Vec<Vec<CellValue>>
 fn csv_read_path<P: AsRef<Path>>(path: P) -> crate::Result<Vec<Vec<CellValue>>> {
     let data = std::fs::read(path.as_ref())
-        .map_err(|e| crate::Error::custom(51601, &format!("Failed to read CSV file: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51601, format!("Failed to read CSV file: {}", e)))?;
     csv_read_bytes(&data)
 }
 
@@ -197,13 +197,13 @@ fn csv_write_bytes(data: &[Vec<CellValue>]) -> crate::Result<Vec<u8>> {
     for row in data {
         let fields: Vec<String> = row.iter().map(csv_cell_to_string).collect();
         wtr.write_record(&fields)
-            .map_err(|e| crate::Error::custom(51603, &format!("CSV write error: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51603, format!("CSV write error: {}", e)))?;
     }
     wtr.flush()
-        .map_err(|e| crate::Error::custom(51603, &format!("CSV flush error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51603, format!("CSV flush error: {}", e)))?;
     let bytes = wtr
         .into_inner()
-        .map_err(|e| crate::Error::custom(51603, &format!("CSV inner error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51603, format!("CSV inner error: {}", e)))?;
     Ok(bytes)
 }
 
@@ -365,7 +365,7 @@ impl Excel {
         sheet: Option<&str>,
     ) -> crate::Result<Vec<Vec<CellValue>>> {
         let mut workbook: Xlsx<_> = open_workbook(path).map_err(|e| {
-            crate::Error::custom(51601, &format!("Failed to open Excel file: {}", e))
+            crate::Error::custom(51601, format!("Failed to open Excel file: {}", e))
         })?;
 
         let sheet_name = match sheet {
@@ -381,7 +381,7 @@ impl Excel {
 
         let range = workbook
             .worksheet_range(&sheet_name)
-            .map_err(|e| crate::Error::custom(51602, &format!("Sheet not found: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51602, format!("Sheet not found: {}", e)))?;
 
         Ok(range
             .rows()
@@ -393,7 +393,7 @@ impl Excel {
     pub fn read_xlsx_bytes(data: &[u8], sheet: Option<&str>) -> crate::Result<Vec<Vec<CellValue>>> {
         let cursor = Cursor::new(data);
         let mut workbook: Xlsx<_> = calamine::open_workbook_from_rs(cursor).map_err(|e| {
-            crate::Error::custom(51601, &format!("Failed to parse Excel data: {}", e))
+            crate::Error::custom(51601, format!("Failed to parse Excel data: {}", e))
         })?;
 
         let sheet_name = match sheet {
@@ -409,7 +409,7 @@ impl Excel {
 
         let range = workbook
             .worksheet_range(&sheet_name)
-            .map_err(|e| crate::Error::custom(51602, &format!("Sheet not found: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51602, format!("Sheet not found: {}", e)))?;
 
         Ok(range
             .rows()
@@ -422,7 +422,7 @@ impl Excel {
         path: P,
     ) -> crate::Result<HashMap<String, Vec<Vec<CellValue>>>> {
         let mut workbook: Xlsx<_> = open_workbook(path).map_err(|e| {
-            crate::Error::custom(51601, &format!("Failed to open Excel file: {}", e))
+            crate::Error::custom(51601, format!("Failed to open Excel file: {}", e))
         })?;
 
         let mut result = HashMap::new();
@@ -431,7 +431,7 @@ impl Excel {
         for name in names {
             let range = workbook
                 .worksheet_range(&name)
-                .map_err(|e| crate::Error::custom(51602, &format!("Sheet error: {}", e)))?;
+                .map_err(|e| crate::Error::custom(51602, format!("Sheet error: {}", e)))?;
 
             let data = range
                 .rows()
@@ -455,14 +455,14 @@ impl Excel {
                 sheet
                     .write_string(row_idx as u32, col_idx as u16, *cell)
                     .map_err(|e| {
-                        crate::Error::custom(51603, &format!("Write cell failed: {}", e))
+                        crate::Error::custom(51603, format!("Write cell failed: {}", e))
                     })?;
             }
         }
 
         let buffer = workbook
             .save_to_buffer()
-            .map_err(|e| crate::Error::custom(51603, &format!("Save Excel failed: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51603, format!("Save Excel failed: {}", e)))?;
 
         Ok(buffer)
     }
@@ -475,7 +475,7 @@ impl Excel {
         let mut workbook = rust_xlsxwriter::Workbook::new();
         let sheet = match sheet_name {
             Some(name) => workbook.add_worksheet().set_name(name).map_err(|e| {
-                crate::Error::custom(51603, &format!("Set sheet name failed: {}", e))
+                crate::Error::custom(51603, format!("Set sheet name failed: {}", e))
             })?,
             None => workbook.add_worksheet(),
         };
@@ -484,7 +484,7 @@ impl Excel {
 
         let buffer = workbook
             .save_to_buffer()
-            .map_err(|e| crate::Error::custom(51603, &format!("Save Excel failed: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51603, format!("Save Excel failed: {}", e)))?;
 
         Ok(buffer)
     }
@@ -514,14 +514,14 @@ impl Excel {
                 .add_worksheet()
                 .set_name(*sheet_name)
                 .map_err(|e| {
-                    crate::Error::custom(51603, &format!("Set sheet name failed: {}", e))
+                    crate::Error::custom(51603, format!("Set sheet name failed: {}", e))
                 })?;
             Self::write_typed_to_sheet(sheet, data)?;
         }
 
         let buffer = workbook
             .save_to_buffer()
-            .map_err(|e| crate::Error::custom(51603, &format!("Save Excel failed: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51603, format!("Save Excel failed: {}", e)))?;
 
         Ok(buffer)
     }
@@ -631,29 +631,29 @@ impl Excel {
                     CellValue::Empty => {}
                     CellValue::String(s) => {
                         sheet.write_string(r, c, s.as_str()).map_err(|e| {
-                            crate::Error::custom(51603, &format!("Write failed: {}", e))
+                            crate::Error::custom(51603, format!("Write failed: {}", e))
                         })?;
                     }
                     CellValue::Float(f) => {
                         sheet.write_number(r, c, *f).map_err(|e| {
-                            crate::Error::custom(51603, &format!("Write failed: {}", e))
+                            crate::Error::custom(51603, format!("Write failed: {}", e))
                         })?;
                     }
                     CellValue::Int(i) => {
                         sheet.write_number(r, c, *i as f64).map_err(|e| {
-                            crate::Error::custom(51603, &format!("Write failed: {}", e))
+                            crate::Error::custom(51603, format!("Write failed: {}", e))
                         })?;
                     }
                     CellValue::Bool(b) => {
                         sheet.write_boolean(r, c, *b).map_err(|e| {
-                            crate::Error::custom(51603, &format!("Write failed: {}", e))
+                            crate::Error::custom(51603, format!("Write failed: {}", e))
                         })?;
                     }
                     CellValue::Error(e) => {
                         sheet
                             .write_string(r, c, format!("#ERR: {}", e))
                             .map_err(|e| {
-                                crate::Error::custom(51603, &format!("Write failed: {}", e))
+                                crate::Error::custom(51603, format!("Write failed: {}", e))
                             })?;
                     }
                 }
@@ -673,31 +673,29 @@ impl Excel {
             match cell {
                 CellValue::Empty => {}
                 CellValue::String(s) => {
-                    sheet.write_string(row_idx, c, s.as_str()).map_err(|e| {
-                        crate::Error::custom(51603, &format!("Write failed: {}", e))
-                    })?;
+                    sheet
+                        .write_string(row_idx, c, s.as_str())
+                        .map_err(|e| crate::Error::custom(51603, format!("Write failed: {}", e)))?;
                 }
                 CellValue::Float(f) => {
-                    sheet.write_number(row_idx, c, *f).map_err(|e| {
-                        crate::Error::custom(51603, &format!("Write failed: {}", e))
-                    })?;
+                    sheet
+                        .write_number(row_idx, c, *f)
+                        .map_err(|e| crate::Error::custom(51603, format!("Write failed: {}", e)))?;
                 }
                 CellValue::Int(i) => {
-                    sheet.write_number(row_idx, c, *i as f64).map_err(|e| {
-                        crate::Error::custom(51603, &format!("Write failed: {}", e))
-                    })?;
+                    sheet
+                        .write_number(row_idx, c, *i as f64)
+                        .map_err(|e| crate::Error::custom(51603, format!("Write failed: {}", e)))?;
                 }
                 CellValue::Bool(b) => {
-                    sheet.write_boolean(row_idx, c, *b).map_err(|e| {
-                        crate::Error::custom(51603, &format!("Write failed: {}", e))
-                    })?;
+                    sheet
+                        .write_boolean(row_idx, c, *b)
+                        .map_err(|e| crate::Error::custom(51603, format!("Write failed: {}", e)))?;
                 }
                 CellValue::Error(e) => {
                     sheet
                         .write_string(row_idx, c, format!("#ERR: {}", e))
-                        .map_err(|e| {
-                            crate::Error::custom(51603, &format!("Write failed: {}", e))
-                        })?;
+                        .map_err(|e| crate::Error::custom(51603, format!("Write failed: {}", e)))?;
                 }
             }
         }
@@ -781,7 +779,7 @@ impl RowReader {
     /// 从 CSV 文件创建流式读取器
     pub fn from_csv_path<P: AsRef<Path>>(path: P) -> crate::Result<Self> {
         let file = File::open(path.as_ref())
-            .map_err(|e| crate::Error::custom(51601, &format!("Failed to open CSV file: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51601, format!("Failed to open CSV file: {}", e)))?;
         let reader = csv::ReaderBuilder::new()
             .has_headers(false)
             .from_reader(BufReader::new(file));
@@ -813,7 +811,7 @@ impl RowReader {
     /// 从 Excel 文件创建读取器
     pub fn from_xlsx_path<P: AsRef<Path>>(path: P, sheet: Option<&str>) -> crate::Result<Self> {
         let mut workbook: Xlsx<BufReader<File>> = open_workbook(path).map_err(|e| {
-            crate::Error::custom(51601, &format!("Failed to open Excel file: {}", e))
+            crate::Error::custom(51601, format!("Failed to open Excel file: {}", e))
         })?;
         let names = workbook.sheet_names();
         let sheet_name = match sheet {
@@ -827,7 +825,7 @@ impl RowReader {
         };
         let range = workbook
             .worksheet_range(&sheet_name)
-            .map_err(|e| crate::Error::custom(51602, &format!("Sheet not found: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51602, format!("Sheet not found: {}", e)))?;
         let total = range.rows().len();
         Ok(Self {
             headers: None,
@@ -848,7 +846,7 @@ impl RowReader {
         let cursor = Cursor::new(data.to_vec());
         let mut workbook: Xlsx<Cursor<Vec<u8>>> =
             calamine::open_workbook_from_rs(cursor).map_err(|e| {
-                crate::Error::custom(51601, &format!("Failed to parse Excel data: {}", e))
+                crate::Error::custom(51601, format!("Failed to parse Excel data: {}", e))
             })?;
         let names = workbook.sheet_names();
         let sheet_name = match sheet {
@@ -862,7 +860,7 @@ impl RowReader {
         };
         let range = workbook
             .worksheet_range(&sheet_name)
-            .map_err(|e| crate::Error::custom(51602, &format!("Sheet not found: {}", e)))?;
+            .map_err(|e| crate::Error::custom(51602, format!("Sheet not found: {}", e)))?;
         let total = range.rows().len();
         Ok(Self {
             headers: None,
@@ -908,7 +906,7 @@ impl RowReader {
                 }
                 Some(Err(e)) => Some(Err(crate::Error::custom(
                     51604,
-                    &format!("CSV parse error: {}", e),
+                    format!("CSV parse error: {}", e),
                 ))),
                 None => None,
             };
@@ -922,7 +920,7 @@ impl RowReader {
                 }
                 Some(Err(e)) => Some(Err(crate::Error::custom(
                     51604,
-                    &format!("CSV parse error: {}", e),
+                    format!("CSV parse error: {}", e),
                 ))),
                 None => None,
             };
@@ -1046,7 +1044,7 @@ impl RowWriter {
     /// ```
     pub fn from_csv_path<P: AsRef<Path>>(path: P) -> crate::Result<Self> {
         let file = File::create(path.as_ref()).map_err(|e| {
-            crate::Error::custom(51603, &format!("Failed to create CSV file: {}", e))
+            crate::Error::custom(51603, format!("Failed to create CSV file: {}", e))
         })?;
         let writer = csv::WriterBuilder::new().from_writer(BufWriter::new(file));
         Ok(Self {
@@ -1065,7 +1063,7 @@ impl RowWriter {
         if let Some(ref mut wtr) = self.csv_file_writer {
             let fields: Vec<String> = row.iter().map(csv_cell_to_string).collect();
             wtr.write_record(&fields)
-                .map_err(|e| crate::Error::custom(51603, &format!("CSV write error: {}", e)))?;
+                .map_err(|e| crate::Error::custom(51603, format!("CSV write error: {}", e)))?;
             self.csv_file_rows += 1;
             return Ok(());
         }
@@ -1101,7 +1099,7 @@ impl RowWriter {
     pub fn finish(&mut self) -> crate::Result<()> {
         if let Some(mut wtr) = self.csv_file_writer.take() {
             wtr.flush()
-                .map_err(|e| crate::Error::custom(51603, &format!("CSV flush error: {}", e)))?;
+                .map_err(|e| crate::Error::custom(51603, format!("CSV flush error: {}", e)))?;
         }
         Ok(())
     }
@@ -1116,7 +1114,7 @@ impl RowWriter {
         let mut workbook = rust_xlsxwriter::Workbook::new();
         let sheet = match sheet_name {
             Some(name) => workbook.add_worksheet().set_name(name).map_err(|e| {
-                crate::Error::custom(51603, &format!("Set sheet name failed: {}", e))
+                crate::Error::custom(51603, format!("Set sheet name failed: {}", e))
             })?,
             None => workbook.add_worksheet(),
         };
@@ -1127,7 +1125,7 @@ impl RowWriter {
 
         workbook
             .save_to_buffer()
-            .map_err(|e| crate::Error::custom(51603, &format!("Save Excel failed: {}", e)))
+            .map_err(|e| crate::Error::custom(51603, format!("Save Excel failed: {}", e)))
     }
 
     /// 完成写入，生成指定格式的字节
@@ -1142,7 +1140,7 @@ impl RowWriter {
     pub fn finish_csv_path<P: AsRef<Path>>(&self, path: P) -> crate::Result<()> {
         let bytes = self.finish_csv_bytes()?;
         std::fs::write(path, bytes)
-            .map_err(|e| crate::Error::custom(51603, &format!("Write CSV file failed: {}", e)))
+            .map_err(|e| crate::Error::custom(51603, format!("Write CSV file failed: {}", e)))
     }
 
     /// 完成写入，保存到 Excel 文件
@@ -1153,7 +1151,7 @@ impl RowWriter {
     ) -> crate::Result<()> {
         let bytes = self.finish_xlsx_bytes(sheet_name)?;
         std::fs::write(path, bytes)
-            .map_err(|e| crate::Error::custom(51603, &format!("Write Excel file failed: {}", e)))
+            .map_err(|e| crate::Error::custom(51603, format!("Write Excel file failed: {}", e)))
     }
 
     /// 完成写入，保存到指定格式的文件
@@ -1162,5 +1160,11 @@ impl RowWriter {
             Format::Xlsx => self.finish_xlsx_path(path, None),
             Format::Csv => self.finish_csv_path(path),
         }
+    }
+}
+
+impl Default for RowWriter {
+    fn default() -> Self {
+        Self::new()
     }
 }

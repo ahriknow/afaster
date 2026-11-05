@@ -2,9 +2,12 @@
 //!
 //! 使用 `#[afast::get]` / `#[afast::post]` 宏，演示 HTTP 接口的链路追踪。
 
+use crate::model::entities::{Category, Comment, Post, PostFindJson as _, PostTag, Tag, User};
 use crate::model::*;
 use afast::{Ctx, Json, State};
 use afaster::trace::TraceContext;
+use afastorm::Field;
+use serde_json::json;
 
 // ── GET /api/health ────────────────────────────────────────
 
@@ -19,28 +22,37 @@ pub async fn health_check() -> Json<ApiResp> {
 pub async fn get_categories(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
-) -> Json<CategoryListResp> {
-    let pool = state.db.sqlite();
-
-    let rows: Vec<(i64, String, String, String, i32)> = {
+) -> afast::Result<Json<CategoryListResp>> {
+    let rows = {
         let _s = state.tracing.span(&trace);
-        sqlx::query_as("SELECT id, name, slug, description, sort_order FROM categories ORDER BY sort_order ASC")
-            .fetch_all(pool).await.unwrap_or_default()
+        let statement = state
+            .orm
+            .repo::<Category>()
+            .map_err(db_error)?
+            .query()
+            .order_by(Category::sort_order.asc())
+            .build()
+            .map_err(db_error)?;
+        state
+            .orm
+            .fetch_all::<Category>(&statement)
+            .await
+            .map_err(db_error)?
     };
 
-    Json(CategoryListResp {
+    Ok(Json(CategoryListResp {
         code: 0,
         data: rows
             .into_iter()
-            .map(|r| CategoryItem {
-                id: r.0,
-                name: r.1,
-                slug: r.2,
-                description: r.3,
-                sort_order: r.4,
+            .map(|row| CategoryItem {
+                id: row.id.unwrap_or_default(),
+                name: row.name,
+                slug: row.slug,
+                description: row.description,
+                sort_order: row.sort_order,
             })
             .collect(),
-    })
+    }))
 }
 
 // ── GET /api/tags ──────────────────────────────────────────
@@ -49,28 +61,35 @@ pub async fn get_categories(
 pub async fn get_tags(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
-) -> Json<TagListResp> {
-    let pool = state.db.sqlite();
-
-    let rows: Vec<(i64, String, String)> = {
+) -> afast::Result<Json<TagListResp>> {
+    let rows = {
         let _s = state.tracing.span(&trace);
-        sqlx::query_as("SELECT id, name, slug FROM tags ORDER BY id ASC")
-            .fetch_all(pool)
+        let statement = state
+            .orm
+            .repo::<Tag>()
+            .map_err(db_error)?
+            .query()
+            .order_by(Tag::id.asc())
+            .build()
+            .map_err(db_error)?;
+        state
+            .orm
+            .fetch_all::<Tag>(&statement)
             .await
-            .unwrap_or_default()
+            .map_err(db_error)?
     };
 
-    Json(TagListResp {
+    Ok(Json(TagListResp {
         code: 0,
         data: rows
             .into_iter()
-            .map(|r| TagItem {
-                id: r.0,
-                name: r.1,
-                slug: r.2,
+            .map(|row| TagItem {
+                id: row.id.unwrap_or_default(),
+                name: row.name,
+                slug: row.slug,
             })
             .collect(),
-    })
+    }))
 }
 
 // ── GET /api/posts ─────────────────────────────────────────
@@ -79,56 +98,91 @@ pub async fn get_tags(
 pub async fn get_posts(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
-) -> Json<PostListResp> {
-    let pool = state.db.sqlite();
-
-    let total: (i64,) = {
+) -> afast::Result<Json<PostListResp>> {
+    let repo = state.orm.repo::<Post>().map_err(db_error)?;
+    let total = {
         let _s = state.tracing.span_name(&trace, "count_posts");
-        sqlx::query_as("SELECT COUNT(*) FROM posts WHERE status = 2")
-            .fetch_one(pool)
+        repo.count_where(Field::new("status").eq(2))
             .await
-            .unwrap_or((0,))
+            .map_err(db_error)?
     };
 
-    let rows: Vec<(
-        i64,
-        i64,
-        Option<i64>,
-        String,
-        String,
-        String,
-        i32,
-        i64,
-        i64,
-        String,
-        Option<String>,
-    )> = {
+    let rows = {
         let _s = state.tracing.span_name(&trace, "query_posts");
-        sqlx::query_as("SELECT id, author_id, category_id, title, summary, content, status, view_count, like_count, created_at, published_at FROM posts WHERE status = 2 ORDER BY published_at DESC LIMIT 50")
-            .fetch_all(pool).await.unwrap_or_default()
+        let statement = repo
+            .query()
+            .filter(Field::new("status").eq(2))
+            .order_by(Post::published_at.desc())
+            .limit(50)
+            .build()
+            .map_err(db_error)?;
+        repo.fetch_all(&statement).await.map_err(db_error)?
     };
 
-    Json(PostListResp {
+    Ok(Json(PostListResp {
         code: 0,
-        total: total.0,
+        total,
         page: 1,
         page_size: 50,
         data: rows
             .into_iter()
-            .map(|r| PostItem {
-                id: r.0,
-                author_id: r.1,
-                category_id: r.2.unwrap_or(0),
-                title: r.3,
-                summary: r.4,
-                status: r.6,
-                view_count: r.7,
-                like_count: r.8,
-                created_at: r.9,
-                published_at: r.10.unwrap_or_default(),
+            .map(|row| PostItem {
+                id: row.id.unwrap_or_default(),
+                author_id: row.author_id,
+                category_id: row.category_id.unwrap_or_default(),
+                title: row.title,
+                summary: row.summary,
+                status: row.status,
+                view_count: row.view_count,
+                like_count: row.like_count,
+                created_at: row.created_at,
+                published_at: row.published_at.unwrap_or_default(),
             })
             .collect(),
-    })
+    }))
+}
+
+// ── GET /api/posts/featured ─────────────────────────────────
+
+#[afast::get(desc("获取精选文章"))]
+pub async fn get_featured_post(
+    State(state): State<afaster::AppState>,
+    Ctx(trace): Ctx<TraceContext>,
+) -> afast::Result<Json<PostListResp>> {
+    let post = {
+        let _s = state.tracing.span_name(&trace, "query_featured_post");
+        state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .find_json_eq_metadata_featured(json!(true))
+            .await
+            .map_err(db_error)?
+    };
+    let data = post
+        .map(|row| {
+            vec![PostItem {
+                id: row.id.unwrap_or_default(),
+                author_id: row.author_id,
+                category_id: row.category_id.unwrap_or_default(),
+                title: row.title,
+                summary: row.summary,
+                status: row.status,
+                view_count: row.view_count,
+                like_count: row.like_count,
+                created_at: row.created_at,
+                published_at: row.published_at.unwrap_or_default(),
+            }]
+        })
+        .unwrap_or_default();
+
+    Ok(Json(PostListResp {
+        code: 0,
+        total: data.len() as i64,
+        page: 1,
+        page_size: 1,
+        data,
+    }))
 }
 
 // ── GET /api/posts/:id ─────────────────────────────────────
@@ -138,21 +192,24 @@ pub async fn get_post_by_id(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
     afast::Query(params): afast::Query<PostIdReq>,
-) -> Json<PostDetailResp> {
-    let pool = state.db.sqlite();
+) -> afast::Result<Json<PostDetailResp>> {
     let id = params.post_id;
 
     let post = {
         let _s = state.tracing.span_name(&trace, "query_post");
-        sqlx::query_as::<_, (i64, i64, String, String, String, i32, i64, i64)>(
-            "SELECT id, author_id, title, slug, summary, status, view_count, like_count FROM posts WHERE id = ? AND status = 2"
-        ).bind(id).fetch_optional(pool).await.unwrap_or(None)
+        state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .first_where(Field::new("id").eq(id).and(Field::new("status").eq(2)))
+            .await
+            .map_err(db_error)?
     };
 
     let post = match post {
-        Some(p) => p,
+        Some(post) => post,
         None => {
-            return Json(PostDetailResp {
+            return Ok(Json(PostDetailResp {
                 code: 404,
                 id: 0,
                 author_id: 0,
@@ -169,42 +226,65 @@ pub async fn get_post_by_id(
                 published_at: String::new(),
                 tags: vec![],
                 comment_count: 0,
-            });
+            }));
         }
     };
 
-    let tags: Vec<String> = {
-        let _s = state.tracing.span_name(&trace, "query_tags");
-        sqlx::query_as::<_, (String,)>(
-            "SELECT t.name FROM tags t JOIN post_tags pt ON t.id = pt.tag_id WHERE pt.post_id = ?",
-        )
-        .bind(id)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|t| t.0)
-        .collect()
+    let _s = state.tracing.span_name(&trace, "query_tags");
+    let post_id = post.id.unwrap_or_default();
+    let tags = {
+        let links_statement = state
+            .orm
+            .repo::<PostTag>()
+            .map_err(db_error)?
+            .query()
+            .filter(Field::new("post_id").eq(post_id))
+            .build()
+            .map_err(db_error)?;
+        let links = state
+            .orm
+            .fetch_all::<PostTag>(&links_statement)
+            .await
+            .map_err(db_error)?;
+        let tag_repository = state.orm.repo::<Tag>().map_err(db_error)?;
+        let mut names = Vec::with_capacity(links.len());
+        for link in links {
+            if let Some(tag) = tag_repository
+                .find_by_id(link.tag_id)
+                .await
+                .map_err(db_error)?
+            {
+                names.push(tag.name);
+            }
+        }
+        names
     };
+    let comment_count = state
+        .orm
+        .repo::<Comment>()
+        .map_err(db_error)?
+        .count_where(Field::new("post_id").eq(post_id))
+        .await
+        .map_err(db_error)?;
 
-    Json(PostDetailResp {
+    Ok(Json(PostDetailResp {
         code: 0,
-        id: post.0,
-        author_id: post.1,
-        category_id: 0,
-        title: post.2,
-        slug: post.3,
-        summary: post.4,
-        content: String::new(),
-        status: post.5,
-        view_count: post.6,
-        like_count: post.7,
-        is_pinned: false,
-        created_at: String::new(),
-        published_at: String::new(),
+        id: post_id,
+        author_id: post.author_id,
+        category_id: post.category_id.unwrap_or_default(),
+        title: post.title,
+        slug: post.slug,
+        summary: post.summary,
+        content: post.content,
+        status: post.status,
+        view_count: post.view_count,
+        like_count: post.like_count,
+        is_pinned: post.is_pinned,
+        created_at: post.created_at,
+        published_at: post.published_at.unwrap_or_default(),
         tags,
-        comment_count: 0,
-    })
+        comment_count,
+    }))
 }
 
 // ── GET /api/stats ─────────────────────────────────────────
@@ -213,33 +293,44 @@ pub async fn get_post_by_id(
 pub async fn site_stats(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
-) -> Json<DashboardStats> {
-    let pool = state.db.sqlite();
-
+) -> afast::Result<Json<DashboardStats>> {
     let (total_users, total_posts, total_comments) = {
         let _s = state.tracing.span_name(&trace, "aggregate_stats");
-        let u: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-            .fetch_one(pool)
+        let users = state
+            .orm
+            .repo::<User>()
+            .map_err(db_error)?
+            .count()
             .await
-            .unwrap_or((0,));
-        let p: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM posts")
-            .fetch_one(pool)
+            .map_err(db_error)?;
+        let posts = state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .count()
             .await
-            .unwrap_or((0,));
-        let c: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM comments")
-            .fetch_one(pool)
+            .map_err(db_error)?;
+        let comments = state
+            .orm
+            .repo::<Comment>()
+            .map_err(db_error)?
+            .count()
             .await
-            .unwrap_or((0,));
-        (u.0, p.0, c.0)
+            .map_err(db_error)?;
+        (users, posts, comments)
     };
 
-    Json(DashboardStats {
+    Ok(Json(DashboardStats {
         total_posts,
         total_users,
         total_comments,
         total_categories: 0,
         total_tags: 0,
-    })
+    }))
+}
+
+fn db_error(error: impl std::fmt::Display) -> afast::Error {
+    afaster::Error::custom(50002, format!("DB: {error}")).into()
 }
 
 // ── 构建服务 ────────────────────────────────────────────────
@@ -250,6 +341,7 @@ pub fn build_service() -> afast::Service {
         get("/api/categories", get_categories),
         get("/api/tags", get_tags),
         get("/api/posts", get_posts),
+        get("/api/posts/featured", get_featured_post),
         get("/api/posts/:id", get_post_by_id),
         get("/api/stats", site_stats),
     })

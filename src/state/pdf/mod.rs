@@ -285,36 +285,36 @@ fn prepare_subset_font(
     let scope = ReadScope::new(font_bytes);
     let font_data = scope
         .read::<FontData<'_>>()
-        .map_err(|e| crate::Error::custom(51701, &format!("Font parse error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51701, format!("Font parse error: {}", e)))?;
     let provider = font_data
         .table_provider(font_index as usize)
-        .map_err(|e| crate::Error::custom(51701, &format!("Font provider error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51701, format!("Font provider error: {}", e)))?;
 
     // 2. 读取 HEAD 表 → 字体度量（必须成功）
     let head_data = provider
         .read_table_data(tag::HEAD)
-        .map_err(|e| crate::Error::custom(51701, &format!("head read error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51701, format!("head read error: {}", e)))?;
     let head = ReadScope::new(&head_data)
         .read::<HeadTable>()
-        .map_err(|e| crate::Error::custom(51701, &format!("head parse error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51701, format!("head parse error: {}", e)))?;
 
     // 3. 读取 HHEA 表 → ascent/descent/num_h_metrics（必须成功）
     let hhea_data = provider
         .read_table_data(tag::HHEA)
-        .map_err(|e| crate::Error::custom(51701, &format!("hhea read error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51701, format!("hhea read error: {}", e)))?;
     let hhea = ReadScope::new(&hhea_data)
         .read::<HheaTable>()
-        .map_err(|e| crate::Error::custom(51701, &format!("hhea parse error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51701, format!("hhea parse error: {}", e)))?;
 
     // 4. 读取 CMAP 表 → 字符→GID 映射（必须成功）
     let cmap_data = provider
         .read_table_data(tag::CMAP)
-        .map_err(|e| crate::Error::custom(51701, &format!("cmap read error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51701, format!("cmap read error: {}", e)))?;
     let cmap = ReadScope::new(&cmap_data)
         .read::<Cmap<'_>>()
-        .map_err(|e| crate::Error::custom(51701, &format!("cmap parse error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51701, format!("cmap parse error: {}", e)))?;
     let (_, subtable) = read_cmap_subtable(&cmap)
-        .map_err(|e| crate::Error::custom(51701, &format!("cmap subtable error: {}", e)))?
+        .map_err(|e| crate::Error::custom(51701, format!("cmap subtable error: {}", e)))?
         .ok_or_else(|| crate::Error::custom(51701, "No suitable cmap subtable found"))?;
 
     // 5. 字符 → GID 映射
@@ -322,11 +322,11 @@ fn prepare_subset_font(
     let mut glyph_ids_to_keep: Vec<u16> = vec![0]; // 始终包含 .notdef
 
     for &ch in chars_used {
-        if let Ok(Some(gid)) = subtable.map_glyph(ch as u32) {
-            if gid != 0 {
-                char_to_gid.insert(ch, gid);
-                glyph_ids_to_keep.push(gid);
-            }
+        if let Ok(Some(gid)) = subtable.map_glyph(ch as u32)
+            && gid != 0
+        {
+            char_to_gid.insert(ch, gid);
+            glyph_ids_to_keep.push(gid);
         }
     }
     glyph_ids_to_keep.sort();
@@ -772,7 +772,7 @@ impl Pdf {
                     height: img_h,
                 } => {
                     render_image(&mut doc, &mut ops, &bytes, x, y, img_w, img_h).map_err(|e| {
-                        crate::Error::custom(51703, &format!("Failed to add image: {}", e))
+                        crate::Error::custom(51703, format!("Failed to add image: {}", e))
                     })?;
                 }
                 PdfElement::Rect {
@@ -833,6 +833,7 @@ fn select_font(
 
 // ─── 渲染函数 ──────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn render_text(
     ops: &mut Vec<Op>,
     text: &str,
@@ -875,6 +876,7 @@ fn render_text(
     ops.push(Op::EndTextSection);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_table(
     ops: &mut Vec<Op>,
     headers: &[String],
@@ -957,14 +959,14 @@ fn render_table(
     // 绘制数据行
     for (ri, row) in rows.iter().enumerate() {
         // 斑马纹背景
-        if ri % 2 == 1 {
-            if let Some(ref bg) = style.row_alt_bg {
-                ops.push(Op::SetFillColor {
-                    col: bg.to_printpdf(),
-                });
-                let rect_poly = filled_rect_polygon(x, cursor_y - row_h, avail_w, row_h);
-                ops.push(Op::DrawPolygon { polygon: rect_poly });
-            }
+        if ri % 2 == 1
+            && let Some(ref bg) = style.row_alt_bg
+        {
+            ops.push(Op::SetFillColor {
+                col: bg.to_printpdf(),
+            });
+            let rect_poly = filled_rect_polygon(x, cursor_y - row_h, avail_w, row_h);
+            ops.push(Op::DrawPolygon { polygon: rect_poly });
         }
 
         // 单元格文字
@@ -1031,7 +1033,7 @@ fn render_image(
 ) -> crate::Result<()> {
     let mut warnings = Vec::new();
     let raw_image = RawImage::decode_from_bytes(img_bytes, &mut warnings)
-        .map_err(|e| crate::Error::custom(51703, &format!("Image decode error: {}", e)))?;
+        .map_err(|e| crate::Error::custom(51703, format!("Image decode error: {}", e)))?;
 
     let image_id = doc.add_image(&raw_image);
 
@@ -1056,6 +1058,7 @@ fn render_image(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_rect(
     ops: &mut Vec<Op>,
     x: f64,

@@ -10,21 +10,33 @@ secret = "blog-example-jwt-secret-key-change-in-production"
 # worker_id = 1
 # datacenter_id = 1
 
-[sqlite]
+[orm-sqlite]
 path = "blog.db"
+token = "password"
+url = "/admin"
 
-[tls]
-port = 6443
-cert_path = "./acme_cache/fullchain.pem"
-key_path = "./acme_cache/privkey.pem"
+# PostgreSQL ORM 配置（启用 orm-postgres feature 后使用）
+# [orm-postgres]
+# host = "127.0.0.1"
+# port = 5432
+# user = "postgres"
+# pass = "" # 通过本地环境提供，不要提交密码
+# name = "afastorm_test"
+# token = "replace-with-a-private-token"
+# url = "/admin"
 
-[acme]
-domains = ["a.kuaizhunyun.com", "b.kuaizhunyun.com"]
-contact = "mailto:ahriknow@ahriknow.com"
-cache_dir = "./acme_cache"
+# [tls]
+# port = 6443
+# cert_path = "./acme_cache/fullchain.pem"
+# key_path = "./acme_cache/privkey.pem"
+
+# [acme]
+# domains = ["a.com", "b.com"]
+# contact = "mailto:ahriknow@ahriknow.com"
+# cache_dir = "./acme_cache"
 # staging = false
 # renewal_days = 30
-allow_non_80 = true
+# allow_non_80 = true
 
 [tracing]
 service_name = "blog-example"

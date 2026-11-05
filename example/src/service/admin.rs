@@ -1,9 +1,11 @@
 //! 管理员接口：用户管理、文章审核、分类标签管理、角色管理
 //! 使用方案B（闭包式 trace）
 
+use crate::model::entities::{Category, Comment, Post, PostTag, Tag, User};
 use crate::model::*;
 use afast::{Ctx, Custom, Data, State, handler};
 use afaster::trace::TraceContext;
+use afastorm::Field;
 
 // ── 封禁/解封 ────────────────────────────────────────────────
 
@@ -44,12 +46,24 @@ async fn ban_user(
     state
         .tracing
         .trace_with(&trace, "ban_user", "封禁用户", || async {
-            let pool = state.db.sqlite();
-            sqlx::query("UPDATE users SET status = 1, updated_at = datetime('now') WHERE id = ?")
-                .bind(req.target_id)
-                .execute(pool)
+            let mut user = state
+                .orm
+                .repo::<User>()
+                .map_err(db_error)?
+                .find_by_id(req.target_id)
                 .await
-                .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
+                .map_err(db_error)?
+                .ok_or_else(|| afaster::Error::custom(40001, "用户不存在"))?;
+            user.status = 1;
+            user.updated_at = now();
+            state
+                .orm
+                .repo::<User>()
+                .map_err(db_error)?
+                .update(&mut user, None)
+                .await
+                .map_err(db_error)?;
+            Ok::<_, afast::Error>(())
         })
         .await?;
 
@@ -78,12 +92,24 @@ async fn unban_user(
     state
         .tracing
         .trace_with(&trace, "unban_user", "解封用户", || async {
-            let pool = state.db.sqlite();
-            sqlx::query("UPDATE users SET status = 0, updated_at = datetime('now') WHERE id = ?")
-                .bind(req.target_id)
-                .execute(pool)
+            let mut user = state
+                .orm
+                .repo::<User>()
+                .map_err(db_error)?
+                .find_by_id(req.target_id)
                 .await
-                .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
+                .map_err(db_error)?
+                .ok_or_else(|| afaster::Error::custom(40001, "用户不存在"))?;
+            user.status = 0;
+            user.updated_at = now();
+            state
+                .orm
+                .repo::<User>()
+                .map_err(db_error)?
+                .update(&mut user, None)
+                .await
+                .map_err(db_error)?;
+            Ok::<_, afast::Error>(())
         })
         .await?;
 
@@ -150,18 +176,32 @@ async fn review_post(
         "reject" => 3,
         _ => return Ok(ApiResp::err(40001, "无效操作")),
     };
-    let pub_at = if new_status == 2 {
-        Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string())
-    } else {
-        None
-    };
+    let pub_at = if new_status == 2 { Some(now()) } else { None };
 
-    state.tracing.trace_with(&trace, "review_post", "审核文章", || async {
-        let pool = state.db.sqlite();
-        sqlx::query("UPDATE posts SET status = ?, published_at = ?, updated_at = datetime('now') WHERE id = ?")
-            .bind(new_status).bind(&pub_at).bind(req.post_id).execute(pool).await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
-    }).await?;
+    state
+        .tracing
+        .trace_with(&trace, "review_post", "审核文章", || async {
+            let mut post = state
+                .orm
+                .repo::<Post>()
+                .map_err(db_error)?
+                .find_by_id(req.post_id)
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| afaster::Error::custom(40001, "文章不存在"))?;
+            post.status = new_status;
+            post.published_at = pub_at;
+            post.updated_at = now();
+            state
+                .orm
+                .repo::<Post>()
+                .map_err(db_error)?
+                .update(&mut post, None)
+                .await
+                .map_err(db_error)?;
+            Ok::<_, afast::Error>(())
+        })
+        .await?;
 
     Ok(ApiResp::ok(if new_status == 2 {
         "已通过"
@@ -191,23 +231,30 @@ async fn pending_posts(
         }
     }
 
-    let rows = state.tracing.trace_with(&trace, "query_pending", "查询待审核", || async {
-        let pool = state.db.sqlite();
-        sqlx::query_as::<_, (i64, i64, String, String, String)>(
-            "SELECT id, author_id, title, summary, created_at FROM posts WHERE status = 1 ORDER BY id ASC"
-        ).fetch_all(pool).await.unwrap_or_default()
-    }).await;
+    let rows = state
+        .tracing
+        .trace_with(&trace, "query_pending", "查询待审核", || async {
+            let repository = state.orm.repo::<Post>().map_err(db_error)?;
+            let statement = repository
+                .query()
+                .filter(Field::new("status").eq(1))
+                .order_by(Post::id.asc())
+                .build()
+                .map_err(db_error)?;
+            repository.fetch_all(&statement).await.map_err(db_error)
+        })
+        .await?;
 
     Ok(PendingPostListResp {
         code: 0,
         data: rows
             .into_iter()
-            .map(|r| PendingPostItem {
-                id: r.0,
-                author_id: r.1,
-                title: r.2,
-                summary: r.3,
-                created_at: r.4,
+            .map(|post| PendingPostItem {
+                id: post.id.unwrap_or_default(),
+                author_id: post.author_id,
+                title: post.title,
+                summary: post.summary,
+                created_at: post.created_at,
             })
             .collect(),
     })
@@ -237,14 +284,22 @@ async fn create_category(
     state
         .tracing
         .trace_with(&trace, "create_category", "创建分类", || async {
-            let pool = state.db.sqlite();
-            sqlx::query("INSERT INTO categories (name, slug, description) VALUES (?, ?, ?)")
-                .bind(&req.name)
-                .bind(&req.slug)
-                .bind(&req.description)
-                .execute(pool)
+            let mut category = Category {
+                id: None,
+                name: req.name.clone(),
+                slug: req.slug.clone(),
+                description: req.description.clone(),
+                sort_order: 0,
+                created_at: now(),
+            };
+            state
+                .orm
+                .repo::<Category>()
+                .map_err(db_error)?
+                .insert(&mut category)
                 .await
-                .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
+                .map_err(db_error)?;
+            Ok::<_, afast::Error>(())
         })
         .await?;
 
@@ -273,17 +328,31 @@ async fn delete_category(
     state
         .tracing
         .trace_with(&trace, "delete_category", "删除分类", || async {
-            let pool = state.db.sqlite();
-            sqlx::query("UPDATE posts SET category_id = NULL WHERE category_id = ?")
-                .bind(req.cat_id)
-                .execute(pool)
+            let posts = state.orm.repo::<Post>().map_err(db_error)?;
+            let statement = posts
+                .query()
+                .filter(Field::new("category_id").eq(req.cat_id))
+                .build()
+                .map_err(db_error)?;
+            let mut affected = posts.fetch_all(&statement).await.map_err(db_error)?;
+            for post in &mut affected {
+                post.category_id = None;
+                state
+                    .orm
+                    .repo::<Post>()
+                    .map_err(db_error)?
+                    .update(post, None)
+                    .await
+                    .map_err(db_error)?;
+            }
+            state
+                .orm
+                .repo::<Category>()
+                .map_err(db_error)?
+                .delete(req.cat_id)
                 .await
-                .ok();
-            sqlx::query("DELETE FROM categories WHERE id = ?")
-                .bind(req.cat_id)
-                .execute(pool)
-                .await
-                .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
+                .map_err(db_error)?;
+            Ok::<_, afast::Error>(())
         })
         .await?;
 
@@ -314,13 +383,20 @@ async fn create_tag(
     state
         .tracing
         .trace_with(&trace, "create_tag", "创建标签", || async {
-            let pool = state.db.sqlite();
-            sqlx::query("INSERT INTO tags (name, slug) VALUES (?, ?)")
-                .bind(&req.name)
-                .bind(&req.slug)
-                .execute(pool)
+            let mut tag = Tag {
+                id: None,
+                name: req.name.clone(),
+                slug: req.slug.clone(),
+                created_at: now(),
+            };
+            state
+                .orm
+                .repo::<Tag>()
+                .map_err(db_error)?
+                .insert(&mut tag)
                 .await
-                .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
+                .map_err(db_error)?;
+            Ok::<_, afast::Error>(())
         })
         .await?;
 
@@ -349,17 +425,21 @@ async fn delete_tag(
     state
         .tracing
         .trace_with(&trace, "delete_tag", "删除标签", || async {
-            let pool = state.db.sqlite();
-            sqlx::query("DELETE FROM post_tags WHERE tag_id = ?")
-                .bind(req.tag_id)
-                .execute(pool)
+            state
+                .orm
+                .repo::<PostTag>()
+                .map_err(db_error)?
+                .delete_where(Field::new("tag_id").eq(req.tag_id))
                 .await
-                .ok();
-            sqlx::query("DELETE FROM tags WHERE id = ?")
-                .bind(req.tag_id)
-                .execute(pool)
+                .map_err(db_error)?;
+            state
+                .orm
+                .repo::<Tag>()
+                .map_err(db_error)?
+                .delete(req.tag_id)
                 .await
-                .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
+                .map_err(db_error)?;
+            Ok::<_, afast::Error>(())
         })
         .await?;
 
@@ -390,12 +470,23 @@ async fn delete_comment(
     state
         .tracing
         .trace_with(&trace, "delete_comment", "删除评论", || async {
-            let pool = state.db.sqlite();
-            sqlx::query("UPDATE comments SET status = 1 WHERE id = ?")
-                .bind(req.comment_id)
-                .execute(pool)
+            let mut comment = state
+                .orm
+                .repo::<Comment>()
+                .map_err(db_error)?
+                .find_by_id(req.comment_id)
                 .await
-                .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))
+                .map_err(db_error)?
+                .ok_or_else(|| afaster::Error::custom(40001, "评论不存在"))?;
+            comment.status = 1;
+            state
+                .orm
+                .repo::<Comment>()
+                .map_err(db_error)?
+                .update(&mut comment, None)
+                .await
+                .map_err(db_error)?;
+            Ok::<_, afast::Error>(())
         })
         .await?;
 
@@ -481,6 +572,14 @@ async fn list_permissions(
         code: 0,
         data: perms,
     })
+}
+
+fn now() -> String {
+    chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+fn db_error(error: impl std::fmt::Display) -> afast::Error {
+    afaster::Error::custom(50002, format!("DB: {error}")).into()
 }
 
 pub fn build_service() -> afast::Service {

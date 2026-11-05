@@ -156,16 +156,16 @@ impl FileService {
         }
 
         // 创建父目录
-        if let Some(parent) = safe_path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(|e| mkdir_failed(path, &e.to_string()))?;
-            }
+        if let Some(parent) = safe_path.parent()
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent).map_err(|e| mkdir_failed(path, &e.to_string()))?;
         }
 
         // 写入文件
         std::fs::write(&safe_path, data).map_err(|e| write_failed(path, &e.to_string()))?;
 
-        Ok(self.build_info(&safe_path)?)
+        self.build_info(&safe_path)
     }
 
     // ── 下载 ──────────────────────────────────────────────────────
@@ -309,14 +309,14 @@ impl FileService {
 
         // canonicalize 后检查是否在 root 下
         // 注意：文件可能还不存在，所以检查父目录
-        if let Some(parent) = full.parent() {
-            if parent.exists() {
-                let canon_parent = parent
-                    .canonicalize()
-                    .map_err(|e| invalid_path(&format!("{}: {}", path, e)))?;
-                if !canon_parent.starts_with(&self.root) {
-                    return Err(path_traversal(path));
-                }
+        if let Some(parent) = full.parent()
+            && parent.exists()
+        {
+            let canon_parent = parent
+                .canonicalize()
+                .map_err(|e| invalid_path(&format!("{}: {}", path, e)))?;
+            if !canon_parent.starts_with(&self.root) {
+                return Err(path_traversal(path));
             }
         }
 

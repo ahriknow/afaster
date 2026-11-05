@@ -1,8 +1,10 @@
 //! 用户后台：管理自己的文章、评论、点赞
 
+use crate::model::entities::{Comment, Post, PostFindBy as _, PostLike, PostTag, Tag, User};
 use crate::model::*;
 use afast::{Ctx, Custom, Data, State, handler};
 use afaster::trace::TraceContext;
+use afastorm::Field;
 
 // ── 个人信息 ──────────────────────────────────────────────────
 
@@ -16,17 +18,17 @@ async fn me(
         .token
         .get_id(&auth.token)
         .map_err(|_| afaster::Error::custom(40101, "无效的令牌"))?;
-    let pool = state.db.sqlite();
 
-    let u: (i64, String, String, String, String, String, i32) = {
+    let user = {
         let _s = state.tracing.span_with(&trace, "query_user", "查询用户");
-        sqlx::query_as(
-            "SELECT id, username, nickname, email, avatar, bio, status FROM users WHERE id = ?",
-        )
-        .bind(uid)
-        .fetch_one(pool)
-        .await
-        .map_err(|_| afaster::Error::custom(40001, "用户不存在"))?
+        state
+            .orm
+            .repo::<User>()
+            .map_err(db_error)?
+            .find_by_id(uid)
+            .await
+            .map_err(db_error)?
+            .ok_or_else(|| afaster::Error::custom(40001, "用户不存在"))?
     };
 
     let (roles, permissions) = {
@@ -46,9 +48,9 @@ async fn me(
         code: 0,
         message: "ok".into(),
         token: String::new(),
-        user_id: u.0,
-        username: u.1,
-        nickname: u.2,
+        user_id: user.id.unwrap_or_default(),
+        username: user.username,
+        nickname: user.nickname,
         roles,
         permissions,
     })
@@ -83,7 +85,6 @@ async fn create_post(
         }
     }
 
-    let pool = state.db.sqlite();
     let slug = req
         .title
         .chars()
@@ -96,6 +97,15 @@ async fn create_post(
     } else {
         req.summary
     };
+    let posts = state.orm.repo::<Post>().map_err(db_error)?;
+    if posts
+        .find_by_author_id_slug(uid, slug.clone())
+        .await
+        .map_err(db_error)?
+        .is_some()
+    {
+        return Ok(ApiResp::err(40001, "文章别名已存在"));
+    }
 
     let can_publish = if let Some(ref rbac) = state.rbac {
         rbac.check_permission(uid, "post:publish")
@@ -111,55 +121,103 @@ async fn create_post(
         None
     };
 
-    let post_id: (i64,) = {
-        let _s = state.tracing.span_with(&trace, "insert_post", "写入文章");
-        sqlx::query("INSERT INTO posts (author_id, category_id, title, slug, summary, content, status, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-            .bind(uid).bind(if req.category_id > 0 { Some(req.category_id) } else { None })
-            .bind(&req.title).bind(&slug).bind(&summary).bind(&req.content).bind(status).bind(&published_at)
-            .execute(pool).await.map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
-        sqlx::query_as("SELECT last_insert_rowid()")
-            .fetch_one(pool)
-            .await
-            .unwrap_or((0,))
-    };
-
+    let tags = req.tags.clone();
     {
-        let _s = state.tracing.span_with(&trace, "insert_tags", "写入标签");
-        for tag_name in &req.tags {
-            let tag_id: Option<(i64,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
-                .bind(tag_name)
-                .fetch_optional(pool)
-                .await
-                .unwrap_or(None);
-            let tid = if let Some(t) = tag_id {
-                t.0
-            } else {
-                let s = tag_name
-                    .chars()
-                    .filter(|c| c.is_alphanumeric() || *c == ' ')
-                    .collect::<String>()
-                    .replace(' ', "-")
-                    .to_lowercase();
-                sqlx::query("INSERT INTO tags (name, slug) VALUES (?, ?)")
-                    .bind(tag_name)
-                    .bind(&s)
-                    .execute(pool)
-                    .await
-                    .ok();
-                let n: (i64,) = sqlx::query_as("SELECT last_insert_rowid()")
-                    .fetch_one(pool)
-                    .await
-                    .unwrap_or((0,));
-                n.0
-            };
-            sqlx::query("INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?, ?)")
-                .bind(post_id.0)
-                .bind(tid)
-                .execute(pool)
-                .await
-                .ok();
-        }
-    }
+        let _s = state
+            .tracing
+            .span_with(&trace, "create_post_transaction", "事务创建文章与标签");
+        let mut post = Post {
+            id: None,
+            author_id: uid,
+            category_id: (req.category_id > 0).then_some(req.category_id),
+            title: req.title.clone(),
+            slug,
+            summary,
+            content: req.content.clone(),
+            cover_image: String::new(),
+            metadata: serde_json::json!({
+                "featured": false,
+                "topics": tags,
+            }),
+            status,
+            view_count: 0,
+            like_count: 0,
+            is_pinned: false,
+            created_at: String::new(),
+            updated_at: String::new(),
+            published_at,
+            deleted_at: None,
+            version: 0,
+        };
+        state
+            .orm
+            .inner()
+            .transaction(async |transaction| {
+                let post_id = {
+                    let mut repository = transaction.repo::<Post>()?;
+                    repository.insert(&mut post).await?;
+                    post.id.ok_or_else(|| {
+                        afastorm::Error::Query("created post has no generated ID".to_owned())
+                    })?
+                };
+
+                for tag_name in &tags {
+                    let tag = {
+                        let mut repository = transaction.repo::<Tag>()?;
+                        let statement = repository
+                            .query()
+                            .filter(Field::new("name").eq(tag_name.clone()))
+                            .limit(1)
+                            .build()?;
+                        repository.fetch_all(&statement).await?.into_iter().next()
+                    };
+                    let tag = if let Some(tag) = tag {
+                        tag
+                    } else {
+                        let slug = tag_name
+                            .chars()
+                            .filter(|c| c.is_alphanumeric() || *c == ' ')
+                            .collect::<String>()
+                            .replace(' ', "-")
+                            .to_lowercase();
+                        let mut tag = Tag {
+                            id: None,
+                            name: tag_name.clone(),
+                            slug,
+                            created_at: chrono::Local::now()
+                                .format("%Y-%m-%d %H:%M:%S")
+                                .to_string(),
+                        };
+                        transaction.repo::<Tag>()?.insert(&mut tag).await?;
+                        tag
+                    };
+                    let tag_id = tag.id.ok_or_else(|| {
+                        afastorm::Error::Query("tag record has no primary key".to_owned())
+                    })?;
+                    let link_exists = {
+                        let mut repository = transaction.repo::<PostTag>()?;
+                        repository
+                            .first_where(
+                                Field::new("post_id")
+                                    .eq(post_id)
+                                    .and(Field::new("tag_id").eq(tag_id)),
+                            )
+                            .await?
+                            .is_some()
+                    };
+                    if !link_exists {
+                        transaction
+                            .repo::<PostTag>()?
+                            .insert(&mut PostTag { post_id, tag_id })
+                            .await?;
+                    }
+                }
+
+                Ok(post_id)
+            })
+            .await
+            .map_err(db_error)?
+    };
 
     Ok(ApiResp::ok(if status == 2 {
         "发布成功"
@@ -181,57 +239,56 @@ async fn my_posts(
         .token
         .get_id(&auth.token)
         .map_err(|_| afaster::Error::custom(40101, "无效的令牌"))?;
-    let pool = state.db.sqlite();
     let page = req.page.max(1);
     let ps = 20i32;
     let offset = (page - 1) * ps;
 
-    let total: (i64,) = {
+    let post_repository = state.orm.repo::<Post>().map_err(db_error)?;
+    let condition = Field::new("author_id")
+        .eq(uid)
+        .and(Field::new("status").ne(3));
+    let total = {
         let _s = state.tracing.span_with(&trace, "count_posts", "统计文章");
-        sqlx::query_as("SELECT COUNT(*) FROM posts WHERE author_id = ? AND status != 3")
-            .bind(uid)
-            .fetch_one(pool)
+        post_repository
+            .count_where(condition.clone())
             .await
-            .unwrap_or((0,))
+            .map_err(db_error)?
     };
 
-    let rows: Vec<(
-        i64,
-        i64,
-        Option<i64>,
-        String,
-        String,
-        String,
-        i32,
-        i64,
-        i64,
-        String,
-        Option<String>,
-    )> = {
+    let rows = {
         let _s = state.tracing.span_with(&trace, "query_posts", "查询文章");
-        sqlx::query_as(
-            "SELECT id, author_id, category_id, title, summary, content, status, view_count, like_count, created_at, published_at FROM posts WHERE author_id = ? AND status != 3 ORDER BY id DESC LIMIT ? OFFSET ?"
-        ).bind(uid).bind(ps).bind(offset).fetch_all(pool).await.unwrap_or_default()
+        let statement = post_repository
+            .query()
+            .filter(condition)
+            .order_by(Post::id.desc())
+            .limit(ps as u64)
+            .offset(offset as u64)
+            .build()
+            .map_err(db_error)?;
+        post_repository
+            .fetch_all(&statement)
+            .await
+            .map_err(db_error)?
     };
 
     Ok(PostListResp {
         code: 0,
-        total: total.0,
+        total,
         page,
         page_size: ps,
         data: rows
             .into_iter()
-            .map(|r| PostItem {
-                id: r.0,
-                author_id: r.1,
-                category_id: r.2.unwrap_or(0),
-                title: r.3,
-                summary: r.4,
-                status: r.6,
-                view_count: r.7,
-                like_count: r.8,
-                created_at: r.9,
-                published_at: r.10.unwrap_or_default(),
+            .map(|row| PostItem {
+                id: row.id.unwrap_or_default(),
+                author_id: row.author_id,
+                category_id: row.category_id.unwrap_or_default(),
+                title: row.title,
+                summary: row.summary,
+                status: row.status,
+                view_count: row.view_count,
+                like_count: row.like_count,
+                created_at: row.created_at,
+                published_at: row.published_at.unwrap_or_default(),
             })
             .collect(),
     })
@@ -250,16 +307,18 @@ async fn delete_post(
         .token
         .get_id(&auth.token)
         .map_err(|_| afaster::Error::custom(40101, "无效的令牌"))?;
-    let pool = state.db.sqlite();
 
     {
         let _s = state.tracing.span_with(&trace, "check_owner", "检查权限");
-        let author: (i64,) = sqlx::query_as("SELECT author_id FROM posts WHERE id = ?")
-            .bind(post_id.post_id)
-            .fetch_one(pool)
+        let post = state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .find_by_id(post_id.post_id)
             .await
-            .map_err(|_| afaster::Error::custom(40001, "文章不存在"))?;
-        if author.0 != uid {
+            .map_err(db_error)?
+            .ok_or_else(|| afaster::Error::custom(40001, "文章不存在"))?;
+        if post.author_id != uid {
             if let Some(ref rbac) = state.rbac {
                 if !rbac
                     .check_permission(uid, "post:delete")
@@ -274,11 +333,21 @@ async fn delete_post(
 
     {
         let _s = state.tracing.span_with(&trace, "soft_delete", "软删除文章");
-        sqlx::query("UPDATE posts SET status = 3, updated_at = datetime('now') WHERE id = ?")
-            .bind(post_id.post_id)
-            .execute(pool)
+        let post = state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .find_by_id(post_id.post_id)
             .await
-            .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
+            .map_err(db_error)?
+            .ok_or_else(|| afaster::Error::custom(40001, "文章不存在"))?;
+        state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .delete_versioned(post_id.post_id, post.version)
+            .await
+            .map_err(db_error)?;
     }
 
     Ok(ApiResp::ok("删除成功"))
@@ -313,16 +382,17 @@ async fn create_comment(
         }
     }
 
-    let pool = state.db.sqlite();
-
     {
         let _s = state.tracing.span_with(&trace, "check_post", "检查文章");
-        let ps: (i32,) = sqlx::query_as("SELECT status FROM posts WHERE id = ?")
-            .bind(req.post_id)
-            .fetch_one(pool)
+        let post = state
+            .orm
+            .repo::<Post>()
+            .map_err(db_error)?
+            .find_by_id(req.post_id)
             .await
-            .map_err(|_| afaster::Error::custom(40001, "文章不存在"))?;
-        if ps.0 != 2 {
+            .map_err(db_error)?
+            .ok_or_else(|| afaster::Error::custom(40001, "文章不存在"))?;
+        if post.status != 2 {
             return Ok(ApiResp::err(40002, "文章未发布"));
         }
     }
@@ -336,16 +406,23 @@ async fn create_comment(
         } else {
             None
         };
-        sqlx::query(
-            "INSERT INTO comments (post_id, author_id, parent_id, content) VALUES (?, ?, ?, ?)",
-        )
-        .bind(req.post_id)
-        .bind(uid)
-        .bind(parent)
-        .bind(&req.content)
-        .execute(pool)
-        .await
-        .map_err(|e| afaster::Error::custom(50002, format!("DB: {}", e)))?;
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mut comment = Comment {
+            id: None,
+            post_id: req.post_id,
+            author_id: uid,
+            parent_id: parent,
+            content: req.content.clone(),
+            status: 0,
+            created_at: now,
+        };
+        state
+            .orm
+            .repo::<Comment>()
+            .map_err(db_error)?
+            .insert(&mut comment)
+            .await
+            .map_err(db_error)?;
     }
 
     Ok(ApiResp::ok("评论成功"))
@@ -364,47 +441,62 @@ async fn like_post(
         .token
         .get_id(&auth.token)
         .map_err(|_| afaster::Error::custom(40101, "无效的令牌"))?;
-    let pool = state.db.sqlite();
 
-    let liked: (i64,) = {
+    let like_repository = state.orm.repo::<PostLike>().map_err(db_error)?;
+    let existing = {
         let _s = state.tracing.span_with(&trace, "check_liked", "检查点赞");
-        sqlx::query_as("SELECT COUNT(*) FROM post_likes WHERE post_id = ? AND user_id = ?")
-            .bind(post_id.post_id)
-            .bind(uid)
-            .fetch_one(pool)
+        state
+            .orm
+            .repo::<PostLike>()
+            .map_err(db_error)?
+            .first_where(
+                Field::new("post_id")
+                    .eq(post_id.post_id)
+                    .and(Field::new("user_id").eq(uid)),
+            )
             .await
-            .unwrap_or((0,))
+            .map_err(db_error)?
     };
 
-    if liked.0 > 0 {
+    if existing.is_some() {
         let _s = state.tracing.span_with(&trace, "unlike", "取消点赞");
-        sqlx::query("DELETE FROM post_likes WHERE post_id = ? AND user_id = ?")
-            .bind(post_id.post_id)
-            .bind(uid)
-            .execute(pool)
+        like_repository
+            .delete_where(
+                Field::new("post_id")
+                    .eq(post_id.post_id)
+                    .and(Field::new("user_id").eq(uid)),
+            )
             .await
-            .ok();
-        sqlx::query("UPDATE posts SET like_count = like_count - 1 WHERE id = ?")
+            .map_err(db_error)?;
+        state
+            .orm
+            .query("UPDATE posts SET like_count = like_count - 1 WHERE id = ?")
             .bind(post_id.post_id)
-            .execute(pool)
+            .execute()
             .await
-            .ok();
+            .map_err(db_error)?;
         Ok(ApiResp::ok("取消点赞"))
     } else {
         let _s = state.tracing.span_with(&trace, "like", "点赞");
-        sqlx::query("INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)")
+        let mut like = PostLike {
+            post_id: post_id.post_id,
+            user_id: uid,
+            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        };
+        like_repository.insert(&mut like).await.map_err(db_error)?;
+        state
+            .orm
+            .query("UPDATE posts SET like_count = like_count + 1 WHERE id = ?")
             .bind(post_id.post_id)
-            .bind(uid)
-            .execute(pool)
+            .execute()
             .await
-            .ok();
-        sqlx::query("UPDATE posts SET like_count = like_count + 1 WHERE id = ?")
-            .bind(post_id.post_id)
-            .execute(pool)
-            .await
-            .ok();
+            .map_err(db_error)?;
         Ok(ApiResp::ok("点赞成功"))
     }
+}
+
+fn db_error(error: impl std::fmt::Display) -> afast::Error {
+    afaster::Error::custom(50002, format!("DB: {error}")).into()
 }
 
 pub fn build_service() -> afast::Service {

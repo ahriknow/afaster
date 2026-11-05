@@ -9,7 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 afaster = { workspace = true, features = [
-    "db-sqlite",
     "jwt",
     "argon2-hash",
     "rbac",
@@ -19,7 +18,7 @@ afaster = { workspace = true, features = [
     "log",
     "afast-ws",
     "afast-http",
-    "afast-tls",
+    # "afast-tls",
     "afast-ts",
     "afast-js",
     "afast-kt",
@@ -28,14 +27,19 @@ afaster = { workspace = true, features = [
     "trace",
     "afast-code",
     "trace-sqlite",
-    "acme",
+    "orm-sqlite",
+    "orm-admin",
+    "orm-migrate",
+    # "acme",
+    "ext",
 ] }
+afastorm = { workspace = true, features = ["derive", "sqlite", "postgres", "migrate"] }
 afast = { workspace = true }
 afastdata = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
-sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
+sqlx = { workspace = true, features = ["macros"] }
 hyper = { workspace = true }
 http-body-util = { workspace = true }

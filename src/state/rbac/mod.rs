@@ -230,19 +230,42 @@ impl Rbac {
     }
 }
 
+/// RBAC 模块配置
+#[derive(Default)]
+pub struct RbacConfig {
+    store: Option<Arc<dyn RbacStore>>,
+}
+
+impl RbacConfig {
+    /// 设置 RBAC 存储实现
+    pub fn with_store(mut self, store: impl RbacStore) -> Self {
+        self.store = Some(Arc::new(store));
+        self
+    }
+
+    fn build(self) -> crate::Result<Rbac> {
+        let store = self
+            .store
+            .ok_or_else(|| crate::Error::custom(52803, "RBAC store is not configured"))?;
+        Ok(Rbac::from_arc(store))
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  AFaster 构建器扩展
 // ═══════════════════════════════════════════════════════════════
 
 /// AFaster RBAC 配置扩展
 pub trait AFasterRbacExt {
-    /// 设置 RBAC 实例
-    fn set_rbac(self, rbac: Rbac) -> Self;
+    /// 通过回调配置并注册 RBAC 模块
+    fn with_rbac(self, f: impl FnOnce(RbacConfig) -> RbacConfig) -> crate::Result<Self>
+    where
+        Self: Sized;
 }
 
 impl AFasterRbacExt for crate::AFaster {
-    fn set_rbac(mut self, rbac: Rbac) -> Self {
-        self.state.rbac = Some(rbac);
-        self
+    fn with_rbac(mut self, f: impl FnOnce(RbacConfig) -> RbacConfig) -> crate::Result<Self> {
+        self.state.rbac = Some(f(RbacConfig::default()).build()?);
+        Ok(self)
     }
 }

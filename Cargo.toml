@@ -21,6 +21,7 @@ repository = "https://github.com/ahriknow/afaster"
 
 [workspace.dependencies]
 afaster = { path = ".", default-features = false }
+afastorm = { version = "0.0.1", default-features = false }
 afast = { version = "0.1.26" }
 afastdata = { version = "0.0.10" }
 serde = { version = "1.0", features = ["derive"] }
@@ -39,6 +40,11 @@ path = "src/lib.rs"
 
 [features]
 default = []
+orm-sqlite = ["dep:afastorm", "afastorm/sqlite"]
+orm-postgres = ["dep:afastorm", "afastorm/postgres"]
+orm-admin = ["dep:afastorm", "afast-ordinary-http", "dep:serde_json"]
+command = ["dep:clap"]
+orm-migrate = ["command", "dep:afastorm", "afastorm/migrate"]
 jwt = ["jsonwebtoken"]
 log = ["tracing", "tracing-appender", "tracing-subscriber"]
 trace = ["log", "afast/hook", "afast-ordinary-http", "sse", "dep:rand"]
@@ -119,6 +125,8 @@ afast-tag-u32 = ["afast/tag-u32"]
 [dependencies]
 afast = { workspace = true }
 afastdata = { workspace = true }
+afastorm = { workspace = true, optional = true }
+clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context"], optional = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }

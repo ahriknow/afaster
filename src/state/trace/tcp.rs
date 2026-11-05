@@ -2,7 +2,6 @@
 //!
 //! 通过 TCP 连接将 span 数据发送到远程服务，使用 afastdata 序列化。
 
-use super::err;
 use super::store::*;
 use afastdata::AFastSerialize;
 
@@ -32,7 +31,6 @@ fn default_reconnect_interval() -> u64 {
 /// 通过 TCP 连接将 span 数据发送到远程服务。
 /// 内部维护一个连接，断开时自动重连。
 pub struct TcpTraceStore {
-    config: TcpTraceStoreConfig,
     tx: tokio::sync::mpsc::UnboundedSender<Vec<SpanData>>,
 }
 
@@ -50,7 +48,7 @@ impl TcpTraceStore {
             Self::run_connection(addr, connect_timeout, reconnect_interval, rx).await;
         });
 
-        Ok(Self { config, tx })
+        Ok(Self { tx })
     }
 
     async fn run_connection(

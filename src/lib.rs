@@ -13,11 +13,24 @@
 // ═══════════════════════════════════════════════════════════════
 
 mod authentication;
+#[cfg(feature = "command")]
+mod command;
 mod error;
 mod handler;
 #[cfg(feature = "log")]
 mod logger;
 mod state;
+
+#[cfg(all(
+    feature = "orm-migrate",
+    not(any(feature = "orm-sqlite", feature = "orm-postgres"))
+))]
+compile_error!("feature `orm-migrate` requires `orm-sqlite` or `orm-postgres`");
+#[cfg(all(
+    feature = "orm-admin",
+    not(any(feature = "orm-sqlite", feature = "orm-postgres"))
+))]
+compile_error!("feature `orm-admin` requires `orm-sqlite` or `orm-postgres`");
 
 // ═══════════════════════════════════════════════════════════════
 //  公共导出：核心
@@ -29,6 +42,10 @@ pub use afast::Error as AfastError;
 #[cfg(feature = "afast-ordinary-http")]
 pub use afast::{Html, HttpResult, Json, Text};
 pub use authentication::AuthData;
+#[cfg(feature = "command")]
+pub use clap;
+#[cfg(feature = "command")]
+pub use command::{CommandFuture, CommandModule};
 pub use error::{Error, Result};
 pub use state::AppState;
 
@@ -91,6 +108,8 @@ pub use state::github_oauth2;
 pub use state::bloom;
 #[cfg(feature = "memkv")]
 pub use state::memkv;
+#[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+pub use state::orm;
 #[cfg(feature = "rbac")]
 pub use state::rbac;
 #[cfg(feature = "redis")]
@@ -161,6 +180,8 @@ pub use state::ali_pay::AFasterAliPayExt;
 pub use state::bloom::AFasterBloomExt;
 #[cfg(feature = "github-oauth2")]
 pub use state::github_oauth2::AFasterGitHubOAuth2Ext;
+#[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+pub use state::orm::AFasterOrmExt;
 #[cfg(feature = "rbac")]
 pub use state::rbac::AFasterRbacExt;
 #[cfg(feature = "scheduler")]
@@ -214,6 +235,10 @@ pub struct AFaster {
     pub(crate) doc_title: Option<String>,
     #[cfg(feature = "afast-doc")]
     pub(crate) doc_basic_auth: Option<(String, String)>,
+    #[cfg(feature = "orm-admin")]
+    pub(crate) orm_admin_auth: Option<state::orm::admin::AdminAuth>,
+    #[cfg(feature = "command")]
+    pub(crate) commands: Vec<Box<dyn CommandModule>>,
     #[cfg(feature = "ext")]
     pub(crate) states: Vec<Box<dyn std::any::Any + Send + Sync>>,
     pub(crate) security_headers: Option<Vec<(&'static str, &'static str)>>,
@@ -254,6 +279,10 @@ impl AFaster {
             doc_title: None,
             #[cfg(feature = "afast-doc")]
             doc_basic_auth: None,
+            #[cfg(feature = "orm-admin")]
+            orm_admin_auth: None,
+            #[cfg(feature = "command")]
+            commands: command::builtin_modules(),
             #[cfg(feature = "ext")]
             states: Vec::new(),
             security_headers: None,
@@ -354,6 +383,16 @@ impl AFaster {
 impl AFaster {
     /// 运行应用
     pub async fn run(self) {
+        #[cfg(feature = "command")]
+        match self.run_command_if_requested().await {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("afaster: {error}");
+                std::process::exit(2);
+            }
+        }
+
         #[cfg(feature = "log")]
         let g = logger::init_logger();
 
@@ -391,6 +430,18 @@ impl AFaster {
         }
 
         let mut app = AFast::new().state(state.clone()).service(health_svc);
+
+        #[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+        {
+            app = app.state(state.orm.inner().clone());
+        }
+
+        #[cfg(feature = "orm-admin")]
+        {
+            if let Some(auth) = self.orm_admin_auth {
+                app = app.state(auth);
+            }
+        }
 
         #[cfg(feature = "afast-http")]
         if let Some(cors_config) = self.cors_config {

@@ -177,17 +177,17 @@ impl WxLogin {
             })?;
 
         // 检查微信API错误
-        if let Some(errcode) = response.get("errcode").and_then(|v| v.as_i64()) {
-            if errcode != 0 {
-                let errmsg = response
-                    .get("errmsg")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error")
-                    .to_string();
-                #[cfg(feature = "log")]
-                tracing::warn!({ code = 40301, msg = "WeChat APP login error" },  "{}", &errmsg);
-                return Err(app_api(&errmsg));
-            }
+        if let Some(errcode) = response.get("errcode").and_then(|v| v.as_i64())
+            && errcode != 0
+        {
+            let errmsg = response
+                .get("errmsg")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error")
+                .to_string();
+            #[cfg(feature = "log")]
+            tracing::warn!({ code = 40301, msg = "WeChat APP login error" },  "{}", &errmsg);
+            return Err(app_api(&errmsg));
         }
 
         let login_response: AppLoginResponse = serde_json::from_value(response).map_err(|_e| {

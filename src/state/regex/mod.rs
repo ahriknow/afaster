@@ -10,6 +10,12 @@ use regex::Regex;
 #[derive(Clone)]
 pub struct RegexUtil;
 
+impl Default for RegexUtil {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RegexUtil {
     pub fn new() -> Self {
         RegexUtil
@@ -87,7 +93,8 @@ impl RegexUtil {
             .unwrap()
             .parse()
             .unwrap_or(0);
-        if year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31 {
+        if !(1900..=2100).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day)
+        {
             return false;
         }
         // 每月天数校验
@@ -95,7 +102,8 @@ impl RegexUtil {
             1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
             4 | 6 | 9 | 11 => 30,
             2 => {
-                if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                if (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
+                {
                     29
                 } else {
                     28

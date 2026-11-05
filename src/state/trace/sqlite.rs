@@ -202,50 +202,50 @@ impl TraceStore for SqliteTraceStore {
             let summaries: Vec<TraceSummary> = all_spans
                 .into_iter()
                 .filter_map(|span| {
-                    if let Some(from) = filter.start_time_from {
-                        if span.start_time < from {
-                            return None;
-                        }
+                    if let Some(from) = filter.start_time_from
+                        && span.start_time < from
+                    {
+                        return None;
                     }
-                    if let Some(to) = filter.start_time_to {
-                        if span.start_time > to {
-                            return None;
-                        }
+                    if let Some(to) = filter.start_time_to
+                        && span.start_time > to
+                    {
+                        return None;
                     }
-                    if let Some(ref svc) = filter.service_name {
-                        if span.service_name != *svc {
-                            return None;
-                        }
+                    if let Some(ref svc) = filter.service_name
+                        && span.service_name != *svc
+                    {
+                        return None;
                     }
-                    if let Some(ref tp) = filter.transport {
-                        if !tp.contains(&span.transport) {
-                            return None;
-                        }
+                    if let Some(ref tp) = filter.transport
+                        && !tp.contains(&span.transport)
+                    {
+                        return None;
                     }
-                    if let Some(ref status) = filter.status {
-                        if span.status.to_string() != status.to_string() {
-                            return None;
-                        }
+                    if let Some(ref status) = filter.status
+                        && span.status.to_string() != status.to_string()
+                    {
+                        return None;
                     }
-                    if let Some(min_dur) = filter.min_duration_us {
-                        if span.duration_us < min_dur {
-                            return None;
-                        }
+                    if let Some(min_dur) = filter.min_duration_us
+                        && span.duration_us < min_dur
+                    {
+                        return None;
                     }
-                    if let Some(max_dur) = filter.max_duration_us {
-                        if span.duration_us > max_dur {
-                            return None;
-                        }
+                    if let Some(max_dur) = filter.max_duration_us
+                        && span.duration_us > max_dur
+                    {
+                        return None;
                     }
-                    if let Some(ec) = filter.error_code {
-                        if span.error_code != Some(ec) {
-                            return None;
-                        }
+                    if let Some(ec) = filter.error_code
+                        && span.error_code != Some(ec)
+                    {
+                        return None;
                     }
-                    if let Some(ref handler) = filter.handler_name {
-                        if span.handler_name != *handler {
-                            return None;
-                        }
+                    if let Some(ref handler) = filter.handler_name
+                        && span.handler_name != *handler
+                    {
+                        return None;
                     }
 
                     Some(TraceSummary {
@@ -312,25 +312,25 @@ impl TraceStore for SqliteTraceStore {
             let mut error_count: i64 = 0;
 
             for span in &root_spans {
-                if let Some(from) = filter.start_time_from {
-                    if span.start_time < from {
-                        continue;
-                    }
+                if let Some(from) = filter.start_time_from
+                    && span.start_time < from
+                {
+                    continue;
                 }
-                if let Some(to) = filter.start_time_to {
-                    if span.start_time > to {
-                        continue;
-                    }
+                if let Some(to) = filter.start_time_to
+                    && span.start_time > to
+                {
+                    continue;
                 }
-                if let Some(ref svc) = filter.service_name {
-                    if span.service_name != *svc {
-                        continue;
-                    }
+                if let Some(ref svc) = filter.service_name
+                    && span.service_name != *svc
+                {
+                    continue;
                 }
-                if let Some(ref tp) = filter.transport {
-                    if span.transport != *tp {
-                        continue;
-                    }
+                if let Some(ref tp) = filter.transport
+                    && span.transport != *tp
+                {
+                    continue;
                 }
 
                 total_count += 1;

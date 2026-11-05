@@ -576,6 +576,7 @@ pub async fn close_order(
 //  退款
 // ═══════════════════════════════════════════════════════════════
 
+#[allow(clippy::too_many_arguments)]
 pub async fn refund(
     client: &reqwest::Client,
     config: &WxPayConfig,

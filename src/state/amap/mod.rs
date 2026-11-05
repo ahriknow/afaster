@@ -368,6 +368,7 @@ impl Amap {
     /// - `extensions` — "base" 或 "all"
     ///
     /// API: `GET /v3/place/around`
+    #[allow(clippy::too_many_arguments)]
     pub async fn poi_around(
         &self,
         location: &str,

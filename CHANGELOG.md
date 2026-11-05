@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.9]
+
+### Added
+
+- **ORM**: Integrate the independently published `afastorm` ORM with optional SQLite and PostgreSQL driver features.
+- **ORM**: Add AFaster `orm` CLI commands for generating model-based schema migrations and applying pending SQL migrations.
+- **ORM Admin**: Add a model-driven administration page and API, configurable with per-model and per-field metadata and protected by a bearer token.
+- **ORM Admin**: Add animated create, edit, detail, and delete-confirmation dialogs; operation notifications; model-specific URLs; and searchable, directly addressable pagination.
+- **Example**: Expand the blog application to demonstrate ORM repositories, generated `find_by` and `find_json` queries, transactions, soft deletes, version locking, migrations, RBAC, and the admin UI.
+- **Docs**: Add AFaster ORM guides covering setup, models, CRUD, queries, transactions, migrations, and the admin integration.
+
+### Changed
+
+- **RBAC**: Configure the storage backend through the `with_rbac` builder callback.
+- **Documentation**: Rewrite the project and blog example READMEs for the feature-based modules and ORM workflow.
+
 ## [0.0.8]
 
 ### Added

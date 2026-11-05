@@ -50,6 +50,9 @@ pub mod clock;
 #[cfg(any(feature = "db-postgres", feature = "db-sqlite", feature = "db-mysql"))]
 pub mod database;
 
+#[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+pub mod orm;
+
 #[cfg(feature = "nonce")]
 pub mod nonce;
 
@@ -170,6 +173,8 @@ pub struct AppState {
     pub backend: Backend,
     #[cfg(any(feature = "db-postgres", feature = "db-sqlite", feature = "db-mysql"))]
     pub db: database::Database,
+    #[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+    pub orm: orm::Orm,
     #[cfg(feature = "argon2-hash")]
     pub argon2: argon2::Argon2Hasher,
     #[cfg(feature = "clock")]
@@ -265,6 +270,8 @@ impl AppState {
             backend: backend.clone(),
             #[cfg(any(feature = "db-postgres", feature = "db-sqlite", feature = "db-mysql"))]
             db: database::Database::from_table(&table).await?,
+            #[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+            orm: orm::Orm::from_table(&table).await?,
             #[cfg(feature = "file")]
             file: file::FileService::from_table(&table)?,
             #[cfg(feature = "argon2-hash")]
