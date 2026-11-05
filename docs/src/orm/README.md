@@ -22,7 +22,7 @@ ORM 与 [`database` 模块](../data/database.md)用途不同：
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.8", default-features = false, features = [
+afaster = { version = "0.0.9", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-admin",

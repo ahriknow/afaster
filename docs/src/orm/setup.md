@@ -8,7 +8,7 @@ AFaster 的 ORM 驱动通过 Feature 选择。应用只应在配置中使用已�
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.8", default-features = false, features = [
+afaster = { version = "0.0.9", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-migrate",

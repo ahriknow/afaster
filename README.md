@@ -13,7 +13,7 @@
 ```toml
 # Cargo.toml
 [dependencies]
-afaster = { version = "0.0.8", default-features = false, features = ["afast-http"] }
+afaster = { version = "0.0.9", default-features = false, features = ["afast-http"] }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -79,7 +79,7 @@ async fn main() {
 增加 ORM 依赖和 feature：
 
 ```toml
-afaster = { version = "0.0.8", default-features = false, features = [
+afaster = { version = "0.0.9", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-migrate",
