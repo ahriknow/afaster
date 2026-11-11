@@ -1,0 +1,16 @@
+[package]
+name = "afaster-derive"
+version = "0.0.10"
+edition = "2024"
+authors = ["ahriknow <ahriknow@ahriknow.com>"]
+license = "MIT"
+description = "Procedural derive macro for AFaster ORM admin metadata."
+repository = "https://github.com/ahriknow/afaster"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "parsing"] }

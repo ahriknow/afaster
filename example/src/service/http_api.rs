@@ -25,19 +25,13 @@ pub async fn get_categories(
 ) -> afast::Result<Json<CategoryListResp>> {
     let rows = {
         let _s = state.tracing.span(&trace);
-        let statement = state
-            .orm
-            .repo::<Category>()
-            .map_err(db_error)?
+        let repository = state.orm.repo::<Category>().map_err(db_error)?;
+        let statement = repository
             .query()
             .order_by(Category::sort_order.asc())
             .build()
             .map_err(db_error)?;
-        state
-            .orm
-            .fetch_all::<Category>(&statement)
-            .await
-            .map_err(db_error)?
+        repository.fetch_all(&statement).await.map_err(db_error)?
     };
 
     Ok(Json(CategoryListResp {
@@ -64,19 +58,13 @@ pub async fn get_tags(
 ) -> afast::Result<Json<TagListResp>> {
     let rows = {
         let _s = state.tracing.span(&trace);
-        let statement = state
-            .orm
-            .repo::<Tag>()
-            .map_err(db_error)?
+        let repository = state.orm.repo::<Tag>().map_err(db_error)?;
+        let statement = repository
             .query()
             .order_by(Tag::id.asc())
             .build()
             .map_err(db_error)?;
-        state
-            .orm
-            .fetch_all::<Tag>(&statement)
-            .await
-            .map_err(db_error)?
+        repository.fetch_all(&statement).await.map_err(db_error)?
     };
 
     Ok(Json(TagListResp {
@@ -135,8 +123,8 @@ pub async fn get_posts(
                 status: row.status,
                 view_count: row.view_count,
                 like_count: row.like_count,
-                created_at: row.created_at,
-                published_at: row.published_at.unwrap_or_default(),
+                created_at: crate::model::entities::format_datetime(row.created_at),
+                published_at: crate::model::entities::format_optional_datetime(row.published_at),
             })
             .collect(),
     }))
@@ -170,8 +158,8 @@ pub async fn get_featured_post(
                 status: row.status,
                 view_count: row.view_count,
                 like_count: row.like_count,
-                created_at: row.created_at,
-                published_at: row.published_at.unwrap_or_default(),
+                created_at: crate::model::entities::format_datetime(row.created_at),
+                published_at: crate::model::entities::format_optional_datetime(row.published_at),
             }]
         })
         .unwrap_or_default();
@@ -280,8 +268,8 @@ pub async fn get_post_by_id(
         view_count: post.view_count,
         like_count: post.like_count,
         is_pinned: post.is_pinned,
-        created_at: post.created_at,
-        published_at: post.published_at.unwrap_or_default(),
+        created_at: crate::model::entities::format_datetime(post.created_at),
+        published_at: crate::model::entities::format_optional_datetime(post.published_at),
         tags,
         comment_count,
     }))

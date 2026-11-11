@@ -21,6 +21,8 @@ pub struct User {
 
 `table` 指定表名，未指定时由模型默认名称推导。字段类型必须是 `afastorm` 支持的类型；`Option<T>` 表示 nullable 字段。`primary_key` 声明主键，`auto_increment` 表示数据库生成主键。`unique` 用于 schema 元数据和建表定义。
 
+`chrono` 与 `time` 类型由可选 feature 提供：分别在 AFaster 和 `afastorm` 中启用 `orm-chrono`/`chrono` 或 `orm-time`/`time`。请确认选定的数据库驱动支持该字段类型。
+
 可通过 `ModelRegistry::new().register::<User>()` 注册单个模型，或在统一函数中注册多个模型：
 
 ```rust,ignore
@@ -101,7 +103,9 @@ pub struct Post {
 
 配置 `soft_delete` 后，Repository 查询、`count` 和默认删除会忽略/标记软删除记录，不会立即物理删除。可使用 `restore(id)` 恢复、`force_delete(id)` 物理删除。启用版本锁时也可使用 `delete_versioned(id, expected_version)` 和 `restore_versioned(id, expected_version)`；版本不匹配会返回乐观锁错误。
 
-使用 `delete_where` 时需格外谨慎：它执行条件删除 SQL，不应用于未经筛选的生产数据操作。
+软删除字段必须是可空类型，以 `NULL` 表示未删除。版本字段插入时初始化，版本化更新、删除或恢复要求提供预期版本；版本冲突会返回乐观锁错误。
+
+使用 `delete_where` 时需格外谨慎：批量条件删除可能绕过逐条软删除或版本校验语义，不要将其用于未经筛选的生产数据操作。
 
 ## 建表
 

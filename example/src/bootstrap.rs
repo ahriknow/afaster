@@ -17,7 +17,7 @@ pub async fn initialize(orm: &Orm, rbac: &Rbac) {
             .hash("admin123")
             .expect("Hash failed");
 
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = chrono::Local::now().naive_local();
         let mut admin = User {
             id: None,
             username: "admin".into(),
@@ -89,7 +89,7 @@ async fn initialize_roles(orm: &Orm) {
         let role_id = if let Some(role) = role {
             role.id.expect("角色记录没有主键")
         } else {
-            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let now = chrono::Local::now().naive_local();
             let mut role = RbacRole {
                 id: None,
                 name: name.into(),

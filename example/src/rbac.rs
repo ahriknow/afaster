@@ -196,7 +196,7 @@ impl RbacStore for SqliteRbacStore {
         let display_name = display_name.to_string();
         let permissions: Vec<String> = permissions.iter().map(|s| s.to_string()).collect();
         Box::pin(async move {
-            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let now = chrono::Local::now().naive_local();
             let mut role = RbacRole {
                 id: None,
                 name,
@@ -286,11 +286,7 @@ impl RbacStore for SqliteRbacStore {
                 .order_by(RbacRole::id.asc())
                 .build()
                 .map_err(db_error)?;
-            let rows = self
-                .orm
-                .fetch_all::<RbacRole>(&statement)
-                .await
-                .map_err(db_error)?;
+            let rows = roles.fetch_all(&statement).await.map_err(db_error)?;
             rows.into_iter().map(role_to_rbac).collect()
         })
     }
@@ -330,7 +326,7 @@ fn role_to_rbac(role: RbacRole) -> Result<Role> {
             .ok_or_else(|| afaster::Error::custom(52805, "角色记录没有主键"))?,
         name: role.name,
         display_name: role.display_name,
-        created_at: role.created_at,
+        created_at: crate::model::entities::format_datetime(role.created_at),
     })
 }
 

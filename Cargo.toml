@@ -1,6 +1,6 @@
 [package]
 name = "afaster"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -10,10 +10,10 @@ keywords = ["web", "framework", "backend", "http", "async"]
 categories = ["web-programming", "asynchronous"]
 
 [workspace]
-members = ["examples/email", "examples/amap", "examples/tmap", "examples/redis", "examples/scheduler", "examples/excel", "examples/pdf", "examples/image", "examples/file", "examples/argon2", "example"]
+members = ["afaster-derive", "examples/email", "examples/amap", "examples/tmap", "examples/redis", "examples/scheduler", "examples/excel", "examples/pdf", "examples/image", "examples/file", "examples/argon2", "example"]
 
 [workspace.package]
-version = "0.0.9"
+version = "0.0.10"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -42,7 +42,9 @@ path = "src/lib.rs"
 default = []
 orm-sqlite = ["dep:afastorm", "afastorm/sqlite"]
 orm-postgres = ["dep:afastorm", "afastorm/postgres"]
-orm-admin = ["dep:afastorm", "afast-ordinary-http", "dep:serde_json"]
+orm-chrono = ["dep:afastorm", "afastorm/chrono"]
+orm-time = ["dep:afastorm", "afastorm/time"]
+orm-admin = ["dep:afastorm", "afast-ordinary-http", "dep:serde_json", "dep:afaster-derive"]
 command = ["dep:clap"]
 orm-migrate = ["command", "dep:afastorm", "afastorm/migrate"]
 jwt = ["jsonwebtoken"]
@@ -126,6 +128,7 @@ afast-tag-u32 = ["afast/tag-u32"]
 afast = { workspace = true }
 afastdata = { workspace = true }
 afastorm = { workspace = true, optional = true }
+afaster-derive = { version = "0.0.10", optional = true }
 clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context"], optional = true }
 chrono = { workspace = true }
 serde = { workspace = true }

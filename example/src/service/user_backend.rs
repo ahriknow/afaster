@@ -116,7 +116,7 @@ async fn create_post(
     };
     let status: i32 = if can_publish { 2 } else { 1 };
     let published_at = if status == 2 {
-        Some(chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string())
+        Some(chrono::Local::now().naive_local())
     } else {
         None
     };
@@ -143,8 +143,8 @@ async fn create_post(
             view_count: 0,
             like_count: 0,
             is_pinned: false,
-            created_at: String::new(),
-            updated_at: String::new(),
+            created_at: chrono::NaiveDateTime::default(),
+            updated_at: chrono::NaiveDateTime::default(),
             published_at,
             deleted_at: None,
             version: 0,
@@ -184,9 +184,7 @@ async fn create_post(
                             id: None,
                             name: tag_name.clone(),
                             slug,
-                            created_at: chrono::Local::now()
-                                .format("%Y-%m-%d %H:%M:%S")
-                                .to_string(),
+                            created_at: chrono::Local::now().naive_local(),
                         };
                         transaction.repo::<Tag>()?.insert(&mut tag).await?;
                         tag
@@ -287,8 +285,8 @@ async fn my_posts(
                 status: row.status,
                 view_count: row.view_count,
                 like_count: row.like_count,
-                created_at: row.created_at,
-                published_at: row.published_at.unwrap_or_default(),
+                created_at: crate::model::entities::format_datetime(row.created_at),
+                published_at: crate::model::entities::format_optional_datetime(row.published_at),
             })
             .collect(),
     })
@@ -406,7 +404,7 @@ async fn create_comment(
         } else {
             None
         };
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = chrono::Local::now().naive_local();
         let mut comment = Comment {
             id: None,
             post_id: req.post_id,
@@ -481,7 +479,7 @@ async fn like_post(
         let mut like = PostLike {
             post_id: post_id.post_id,
             user_id: uid,
-            created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            created_at: chrono::Local::now().naive_local(),
         };
         like_repository.insert(&mut like).await.map_err(db_error)?;
         state

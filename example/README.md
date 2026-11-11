@@ -42,11 +42,13 @@ cargo run -p example
 
 管理端首页列出已启用的模型；进入模型后，页面 URL 带有模型 hash，可直接分享或刷新恢复当前模型。支持搜索、分页及直接跳转页码；新增、编辑和查看通过带动画的弹窗完成；删除需要二次确认。操作成功或失败会显示自动关闭的提示，鼠标悬停时暂停倒计时。
 
-示例在模型属性中演示：
+示例通过 `AFasterAdmin` derive 在 AFaster 侧注册管理端元数据：
 
-- `admin(label = "...", list, detail, create, update, delete)` 配置模型级管理能力。
-- 字段级 `admin(label = "...", list, detail, create, update, search, readonly, hidden)` 配置显示名、可见位置和编辑权限。
+- 模型与字段分别使用 `#[admin(...)]` 配置操作能力、显示字段、顺序及 label。
+- `label_lang` 从 `.with_i18ns(...)` 的有序语言翻译表中取值；第一种语言是默认语言，当前语言由 URL 的 `?lang=` 参数决定。
+- ORM `ModelRegistry` 与 `AdminModelRegistry` 分别注册数据库模型和管理端元数据；`afastorm` 不再包含管理端属性。
 - `#[orm(soft_delete)]` 与 `#[orm(version)]` 在管理端删除和更新中提供软删除及乐观锁。
+- 文章的创建、更新时间、发布时间和软删除时间使用 chrono 日期时间类型；日期时间字段使用日期时间输入控件。
 
 具体字段配置见 [`entities.rs`](./src/model/entities.rs)。管理端是受 Bearer token 保护的轻量工具，不替代生产系统的身份认证、权限分层和审计。不要向管理端暴露密码哈希、token 或其他敏感字段。
 

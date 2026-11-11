@@ -13,7 +13,7 @@
 ```toml
 # Cargo.toml
 [dependencies]
-afaster = { version = "0.0.9", default-features = false, features = ["afast-http"] }
+afaster = { version = "0.0.10", default-features = false, features = ["afast-http"] }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -54,6 +54,7 @@ async fn main() {
 |---|---|
 | `db-postgres`、`db-sqlite`、`db-mysql` | 直接访问 SQLx 连接池 |
 | `orm-sqlite`、`orm-postgres` | afastorm 的 SQLite、PostgreSQL 驱动 |
+| `orm-chrono`、`orm-time` | afastorm 的 chrono / time 字段类型支持 |
 | `orm-admin` | AFaster 集成的模型管理页面和 API |
 | `orm-migrate` | 注册 `orm makemigrations` / `orm migrate` 命令 |
 | `redis`、`valkey` | Redis / Valkey |
@@ -79,7 +80,7 @@ async fn main() {
 增加 ORM 依赖和 feature：
 
 ```toml
-afaster = { version = "0.0.9", default-features = false, features = [
+afaster = { version = "0.0.10", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-migrate",

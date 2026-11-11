@@ -176,7 +176,11 @@ async fn review_post(
         "reject" => 3,
         _ => return Ok(ApiResp::err(40001, "无效操作")),
     };
-    let pub_at = if new_status == 2 { Some(now()) } else { None };
+    let pub_at = if new_status == 2 {
+        Some(chrono::Local::now().naive_local())
+    } else {
+        None
+    };
 
     state
         .tracing
@@ -191,7 +195,7 @@ async fn review_post(
                 .ok_or_else(|| afaster::Error::custom(40001, "文章不存在"))?;
             post.status = new_status;
             post.published_at = pub_at;
-            post.updated_at = now();
+            post.updated_at = chrono::Local::now().naive_local();
             state
                 .orm
                 .repo::<Post>()
@@ -254,7 +258,7 @@ async fn pending_posts(
                 author_id: post.author_id,
                 title: post.title,
                 summary: post.summary,
-                created_at: post.created_at,
+                created_at: crate::model::entities::format_datetime(post.created_at),
             })
             .collect(),
     })
@@ -574,8 +578,8 @@ async fn list_permissions(
     })
 }
 
-fn now() -> String {
-    chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+fn now() -> chrono::NaiveDateTime {
+    chrono::Local::now().naive_local()
 }
 
 fn db_error(error: impl std::fmt::Display) -> afast::Error {

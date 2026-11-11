@@ -29,6 +29,7 @@ afaster = { workspace = true, features = [
     "trace-sqlite",
     "orm-sqlite",
     "orm-admin",
+    "orm-chrono",
     "orm-migrate",
     # "acme",
     "ext",

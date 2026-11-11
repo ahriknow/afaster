@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 jobs:
   publish:
     name: Publish
@@ -16,13 +19,21 @@ jobs:
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
           CARGO_VERSION=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' Cargo.toml | head -1)
+          DERIVE_VERSION=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' afaster-derive/Cargo.toml | head -1)
           echo "Tag version:     $TAG_VERSION"
           echo "Cargo version:   $CARGO_VERSION"
+          echo "Derive version:  $DERIVE_VERSION"
           if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
             echo "::error::Tag version 'v$TAG_VERSION' does not match Cargo.toml version '$CARGO_VERSION'. Aborting publish."
             exit 1
           fi
-          echo "::notice::Version check passed: v$TAG_VERSION == $CARGO_VERSION"
+          if [ "$TAG_VERSION" != "$DERIVE_VERSION" ]; then
+            echo "::error::Tag version 'v$TAG_VERSION' does not match afaster-derive/Cargo.toml version '$DERIVE_VERSION'. Aborting publish."
+            exit 1
+          fi
+          echo "::notice::Version checks passed: v$TAG_VERSION == $CARGO_VERSION == $DERIVE_VERSION"
+          echo "DERIVE_VERSION=$DERIVE_VERSION" >> "$GITHUB_ENV"
+          echo "PACKAGE_VERSION=$CARGO_VERSION" >> "$GITHUB_ENV"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -30,5 +41,71 @@ jobs:
       - name: Login to crates.io
         run: cargo login ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
+      - name: Publish afaster-derive when needed
+        id: publish_derive
+        shell: bash
+        run: |
+          INDEX_URL="https://index.crates.io/af/as/afaster-derive"
+          if index_json=$(curl --fail --silent --show-error --retry 3 "$INDEX_URL"); then
+            if grep -Fq "\"vers\":\"$DERIVE_VERSION\"" <<< "$index_json"; then
+              echo "afaster-derive $DERIVE_VERSION is already published"
+              echo "already_indexed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          else
+            echo "::error::Failed to query the crates.io sparse index for afaster-derive."
+            exit 1
+          fi
+
+          if publish_output=$(cargo publish --package afaster-derive 2>&1); then
+            printf '%s\n' "$publish_output"
+            echo "already_indexed=false" >> "$GITHUB_OUTPUT"
+          elif grep -Fq "crate afaster-derive@$DERIVE_VERSION already exists on crates.io index" <<< "$publish_output"; then
+            printf '%s\n' "$publish_output"
+            echo "::notice::afaster-derive $DERIVE_VERSION already exists in the crates.io index"
+            echo "already_indexed=true" >> "$GITHUB_OUTPUT"
+          else
+            printf '%s\n' "$publish_output"
+            exit 1
+          fi
+
+      - name: Wait for afaster-derive to appear on crates.io
+        if: steps.publish_derive.outputs.already_indexed != 'true'
+        shell: bash
+        run: |
+          for attempt in {1..60}; do
+            if index_json=$(curl --fail --silent --show-error --retry 3 https://index.crates.io/af/as/afaster-derive); then
+              if grep -Fq "\"vers\":\"$DERIVE_VERSION\"" <<< "$index_json"; then
+                echo "afaster-derive $DERIVE_VERSION is available in the crates.io index"
+                exit 0
+              fi
+            fi
+            echo "Waiting for afaster-derive to become available ($attempt/60)"
+            sleep 10
+          done
+          echo "::error::afaster-derive did not become available on crates.io."
+          exit 1
+
       - name: Publish afaster
-        run: cargo publish --package afaster
+        shell: bash
+        run: |
+          INDEX_URL="https://index.crates.io/af/as/afaster"
+          if index_json=$(curl --fail --silent --show-error --retry 3 "$INDEX_URL"); then
+            if grep -Fq "\"vers\":\"$PACKAGE_VERSION\"" <<< "$index_json"; then
+              echo "afaster $PACKAGE_VERSION is already published"
+              exit 0
+            fi
+          else
+            echo "::error::Failed to query the crates.io sparse index for afaster."
+            exit 1
+          fi
+
+          if publish_output=$(cargo publish --package afaster 2>&1); then
+            printf '%s\n' "$publish_output"
+          elif grep -Fq "crate afaster@$PACKAGE_VERSION already exists on crates.io index" <<< "$publish_output"; then
+            printf '%s\n' "$publish_output"
+            echo "::notice::afaster $PACKAGE_VERSION already exists in the crates.io index"
+          else
+            printf '%s\n' "$publish_output"
+            exit 1
+          fi

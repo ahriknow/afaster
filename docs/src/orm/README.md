@@ -15,6 +15,8 @@ ORM 与 [`database` 模块](../data/database.md)用途不同：
 |---|---|
 | `orm-sqlite` | SQLite ORM 驱动 |
 | `orm-postgres` | PostgreSQL ORM 驱动 |
+| `orm-chrono` | 启用 `afastorm` 对 `chrono` 类型的支持 |
+| `orm-time` | 启用 `afastorm` 对 `time` crate 类型的支持 |
 | `orm-admin` | 挂载基于模型属性配置的管理端；需要同时启用一个 ORM 驱动 |
 | `orm-migrate` | 注册 `orm makemigrations` 和 `orm migrate` 命令 |
 
@@ -22,7 +24,7 @@ ORM 与 [`database` 模块](../data/database.md)用途不同：
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.9", default-features = false, features = [
+afaster = { version = "0.0.10", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-admin",
@@ -38,6 +40,7 @@ tokio = { version = "1", features = ["full"] }
 ```
 
 使用 PostgreSQL 时，将驱动 feature 换成 `orm-postgres`，并在 `afastorm` 中启用 `postgres`。管理端、迁移等可选能力根据需要启用。
+如果模型字段使用 `chrono` 或 `time` 类型，需在 AFaster 和 `afastorm` 两边启用对应的 `orm-chrono`/`chrono` 或 `orm-time`/`time` feature；普通类型模型不需要启用这两个 feature。启用 `orm-admin` 时 AFaster 会重导出其管理端 derive，应用无需直接依赖 `afaster-derive`。
 
 ## 文档导航
 
@@ -47,4 +50,4 @@ tokio = { version = "1", features = ["full"] }
 - [迁移](./migrations.md)：生成、审查和应用迁移。
 - [自动管理端](./admin.md)：模型配置、访问地址和安全建议。
 
-完整示例见仓库中的 [`example/`](../../../example/README.md)。
+建议先阅读[接入与配置](./setup.md)，再根据应用需求选择模型查询、迁移和管理端能力。包含博客业务的完整 ORM 示例见仓库中的 [`example/`](../../../example/README.md)。

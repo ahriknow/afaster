@@ -39,7 +39,7 @@ async fn register(
 
     let user_id = {
         let _s = state.tracing.span_with(&trace, "insert_user", "写入用户");
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = chrono::Local::now().naive_local();
         let mut user = User {
             id: None,
             username: req.username.clone(),
@@ -224,8 +224,8 @@ async fn list_posts(
                 status: post.status,
                 view_count: post.view_count,
                 like_count: post.like_count,
-                created_at: post.created_at,
-                published_at: post.published_at.unwrap_or_default(),
+                created_at: crate::model::entities::format_datetime(post.created_at),
+                published_at: crate::model::entities::format_optional_datetime(post.published_at),
             })
             .collect(),
     })
@@ -316,8 +316,8 @@ async fn get_post(
         view_count: post.view_count,
         like_count: post.like_count,
         is_pinned: post.is_pinned,
-        created_at: post.created_at,
-        published_at: post.published_at.unwrap_or_default(),
+        created_at: crate::model::entities::format_datetime(post.created_at),
+        published_at: crate::model::entities::format_optional_datetime(post.published_at),
         tags,
         comment_count,
     })
@@ -334,19 +334,13 @@ async fn list_categories(
         let _s = state
             .tracing
             .span_with(&trace, "query_categories", "查询分类");
-        let statement = state
-            .orm
-            .repo::<Category>()
-            .map_err(db_error)?
+        let repository = state.orm.repo::<Category>().map_err(db_error)?;
+        let statement = repository
             .query()
             .order_by(Category::sort_order.asc())
             .build()
             .map_err(db_error)?;
-        state
-            .orm
-            .fetch_all::<Category>(&statement)
-            .await
-            .map_err(db_error)?
+        repository.fetch_all(&statement).await.map_err(db_error)?
     };
     Ok(CategoryListResp {
         code: 0,
@@ -370,19 +364,13 @@ async fn list_tags(
 ) -> afast::Result<TagListResp> {
     let rows = {
         let _s = state.tracing.span_with(&trace, "query_tags", "查询标签");
-        let statement = state
-            .orm
-            .repo::<Tag>()
-            .map_err(db_error)?
+        let repository = state.orm.repo::<Tag>().map_err(db_error)?;
+        let statement = repository
             .query()
             .order_by(Tag::id.asc())
             .build()
             .map_err(db_error)?;
-        state
-            .orm
-            .fetch_all::<Tag>(&statement)
-            .await
-            .map_err(db_error)?
+        repository.fetch_all(&statement).await.map_err(db_error)?
     };
     Ok(TagListResp {
         code: 0,
@@ -493,17 +481,14 @@ async fn dashboard(
     cursor += d3;
 
     let s4_id = uuid();
-    let categories_statement = state
-        .orm
-        .repo::<Category>()
-        .map_err(db_error)?
+    let categories_repository = state.orm.repo::<Category>().map_err(db_error)?;
+    let categories_statement = categories_repository
         .query()
         .order_by(Category::sort_order.asc())
         .build()
         .map_err(db_error)?;
-    let cat_rows = state
-        .orm
-        .fetch_all::<Category>(&categories_statement)
+    let cat_rows = categories_repository
+        .fetch_all(&categories_statement)
         .await
         .map_err(db_error)?;
     let d4 = now_ms() - cursor;
@@ -522,17 +507,14 @@ async fn dashboard(
     cursor += d4;
 
     let s5_id = uuid();
-    let tags_statement = state
-        .orm
-        .repo::<Tag>()
-        .map_err(db_error)?
+    let tags_repository = state.orm.repo::<Tag>().map_err(db_error)?;
+    let tags_statement = tags_repository
         .query()
         .order_by(Tag::id.asc())
         .build()
         .map_err(db_error)?;
-    let tag_rows = state
-        .orm
-        .fetch_all::<Tag>(&tags_statement)
+    let tag_rows = tags_repository
+        .fetch_all(&tags_statement)
         .await
         .map_err(db_error)?;
     let d5 = now_ms() - cursor;
@@ -606,8 +588,8 @@ async fn dashboard(
             status: post.status,
             view_count: post.view_count,
             like_count: post.like_count,
-            created_at: post.created_at,
-            published_at: post.published_at.unwrap_or_default(),
+            created_at: crate::model::entities::format_datetime(post.created_at),
+            published_at: crate::model::entities::format_optional_datetime(post.published_at),
         })
         .collect();
     let total_categories = cat_rows.len() as i64;
@@ -752,19 +734,9 @@ async fn generate_report(
             let _s = state
                 .tracing
                 .span_with(&ctx1, "query_user_list", "查询用户列表");
-            let statement = state
-                .orm
-                .repo::<User>()
-                .map_err(db_error)?
-                .query()
-                .limit(10)
-                .build()
-                .map_err(db_error)?;
-            state
-                .orm
-                .fetch_all::<User>(&statement)
-                .await
-                .map_err(db_error)?
+            let repository = state.orm.repo::<User>().map_err(db_error)?;
+            let statement = repository.query().limit(10).build().map_err(db_error)?;
+            repository.fetch_all(&statement).await.map_err(db_error)?
         };
         let posts = {
             let _s = state
@@ -855,8 +827,10 @@ async fn generate_report(
                     status: post.status,
                     view_count: post.view_count,
                     like_count: post.like_count,
-                    created_at: post.created_at,
-                    published_at: post.published_at.unwrap_or_default(),
+                    created_at: crate::model::entities::format_datetime(post.created_at),
+                    published_at: crate::model::entities::format_optional_datetime(
+                        post.published_at,
+                    ),
                 })
                 .collect::<Vec<_>>()
         };
@@ -978,15 +952,9 @@ async fn batch_query(
     {
         let _s = state.tracing.span_with(&trace, "query_users", "查询用户");
         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-        let statement = state
-            .orm
-            .repo::<User>()
-            .map_err(db_error)?
-            .query()
-            .limit(5)
-            .build()
-            .map_err(db_error)?;
-        let _: Vec<User> = state.orm.fetch_all(&statement).await.map_err(db_error)?;
+        let repository = state.orm.repo::<User>().map_err(db_error)?;
+        let statement = repository.query().limit(5).build().map_err(db_error)?;
+        let _: Vec<User> = repository.fetch_all(&statement).await.map_err(db_error)?;
     }
 
     // ✅ 查询文章
@@ -1017,15 +985,9 @@ async fn batch_query(
         let _s = state
             .tracing
             .span_with(&trace, "query_comments", "查询评论");
-        let statement = state
-            .orm
-            .repo::<Comment>()
-            .map_err(db_error)?
-            .query()
-            .limit(5)
-            .build()
-            .map_err(db_error)?;
-        let _: Vec<Comment> = state.orm.fetch_all(&statement).await.map_err(db_error)?;
+        let repository = state.orm.repo::<Comment>().map_err(db_error)?;
+        let statement = repository.query().limit(5).build().map_err(db_error)?;
+        let _: Vec<Comment> = repository.fetch_all(&statement).await.map_err(db_error)?;
     }
 
     Ok(ApiResp::ok("批量查询完成（部分失败）"))

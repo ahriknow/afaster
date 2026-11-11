@@ -1,5 +1,9 @@
 use std::ops::Deref;
+#[cfg(feature = "orm-admin")]
+use std::sync::Arc;
 
+#[cfg(feature = "orm-admin")]
+use super::admin::{AdminModelRegistry, AdminTokenGenerator, AdminTokenVerifier};
 use afastorm::{ModelInfo, ModelRegistry};
 use serde::Deserialize;
 
@@ -32,31 +36,50 @@ pub struct Orm {
     admin_url: Option<String>,
     #[cfg(feature = "orm-admin")]
     admin_token: Option<String>,
+    #[cfg(feature = "orm-admin")]
+    admin_logo_letter: String,
+    #[cfg(feature = "orm-admin")]
+    admin_brand_text: String,
+    #[cfg(feature = "orm-admin")]
+    admin_i18ns: Vec<(String, std::collections::HashMap<String, String>)>,
+    #[cfg(feature = "orm-admin")]
+    admin_models: AdminModelRegistry,
+    #[cfg(feature = "orm-admin")]
+    admin_token_generator: Option<AdminTokenGenerator>,
+    #[cfg(feature = "orm-admin")]
+    admin_token_verifier: Option<AdminTokenVerifier>,
 }
 
 impl Orm {
     pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
         let (database_url, token, admin_url) = Self::database_settings(table)?;
-        let mut inner = afastorm::Orm::connect(database_url)
+        #[cfg(not(feature = "orm-admin"))]
+        let _ = (&token, &admin_url);
+        let inner = afastorm::Orm::connect(database_url)
             .await
             .map_err(|error| {
                 crate::Error::custom(50901, format!("ORM initialization failed: {error}"))
             })?;
-        if let Some(token) = token {
-            inner = inner.with_admin_token(token);
-        }
-        if let Some(url) = admin_url {
-            inner = inner.with_admin_url(url);
-        }
-
         Ok(Self {
             inner,
             #[cfg(feature = "orm-admin")]
             admin_enabled: false,
             #[cfg(feature = "orm-admin")]
-            admin_url: None,
+            admin_url,
             #[cfg(feature = "orm-admin")]
-            admin_token: None,
+            admin_token: token,
+            #[cfg(feature = "orm-admin")]
+            admin_logo_letter: "A".to_owned(),
+            #[cfg(feature = "orm-admin")]
+            admin_brand_text: "Afast ORM".to_owned(),
+            #[cfg(feature = "orm-admin")]
+            admin_i18ns: Vec::new(),
+            #[cfg(feature = "orm-admin")]
+            admin_models: AdminModelRegistry::new(),
+            #[cfg(feature = "orm-admin")]
+            admin_token_generator: None,
+            #[cfg(feature = "orm-admin")]
+            admin_token_verifier: None,
         })
     }
 
@@ -145,6 +168,44 @@ impl Orm {
         self
     }
 
+    #[cfg(feature = "orm-admin")]
+    pub fn with_admin_logo_letter(mut self, letter: impl Into<String>) -> Self {
+        self.admin_logo_letter = letter.into();
+        self
+    }
+
+    #[cfg(feature = "orm-admin")]
+    pub fn with_admin_brand_text(mut self, text: impl Into<String>) -> Self {
+        self.admin_brand_text = text.into();
+        self
+    }
+
+    #[cfg(feature = "orm-admin")]
+    pub fn with_i18ns(
+        mut self,
+        i18ns: Vec<(String, std::collections::HashMap<String, String>)>,
+    ) -> Self {
+        self.admin_i18ns = i18ns;
+        self
+    }
+
+    #[cfg(feature = "orm-admin")]
+    pub fn with_admin_models(mut self, models: AdminModelRegistry) -> Self {
+        self.admin_models = models;
+        self
+    }
+
+    #[cfg(feature = "orm-admin")]
+    pub fn with_admin_token_functions(
+        mut self,
+        generate: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
+        verify: impl Fn(&str) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.admin_token_generator = Some(Arc::new(generate));
+        self.admin_token_verifier = Some(Arc::new(verify));
+        self
+    }
+
     pub fn model_metadata(&self) -> Vec<&'static ModelInfo> {
         self.inner.model_metadata()
     }
@@ -162,21 +223,17 @@ impl Orm {
     pub(crate) fn admin_token(&self) -> Option<&str> {
         self.admin_token
             .as_deref()
-            .or_else(|| self.inner.admin_token())
+            .filter(|token| !token.trim().is_empty())
     }
 
     #[cfg(feature = "orm-admin")]
     pub fn admin_url(&self) -> Option<&str> {
-        self.admin_url.as_deref().or_else(|| self.inner.admin_url())
+        self.admin_url.as_deref()
     }
 
     #[cfg(feature = "orm-admin")]
     pub(crate) fn admin_service(&self, url: &str) -> crate::Result<afast::Service> {
-        if !self
-            .model_metadata()
-            .iter()
-            .any(|model| model.admin_enabled)
-        {
+        if !self.admin_models.has_enabled() {
             return Err(crate::Error::custom(
                 50001,
                 "ORM admin service requires at least one registered admin model",
@@ -210,13 +267,16 @@ impl AFasterOrmExt for crate::AFaster {
                 .retain(|service| service.name != "afastorm_admin");
 
             if self.state.orm.admin_enabled() {
-                let token = self.state.orm.admin_token().ok_or_else(|| {
-                    crate::Error::custom(
-                        50001,
-                        "ORM admin is enabled but no `token` is configured or overridden",
-                    )
-                })?;
-                let auth = super::admin::AdminAuth::new(token)?;
+                let auth = super::admin::AdminAuth::new(
+                    self.state.orm.admin_token().map(str::to_owned),
+                    self.state.orm.admin_token_generator.clone(),
+                    self.state.orm.admin_token_verifier.clone(),
+                    self.state.orm.admin_logo_letter.clone(),
+                    self.state.orm.admin_brand_text.clone(),
+                    self.state.orm.admin_i18ns.clone(),
+                    &self.state.orm.admin_models,
+                    self.state.orm.inner.registry(),
+                )?;
                 let url = self.state.orm.admin_url().unwrap_or("/admin");
                 let service = self.state.orm.admin_service(url)?;
                 self.orm_admin_auth = Some(auth);

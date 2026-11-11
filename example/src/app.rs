@@ -1,4 +1,5 @@
 use afaster::{AFasterOrmExt, AFasterRbacExt};
+use std::collections::HashMap;
 
 use crate::{bootstrap, model, rbac::SqliteRbacStore, service};
 
@@ -14,6 +15,39 @@ pub async fn run() {
         .with_orm(|orm| {
             orm.with_models(model::entities::registry())
                 .with_admin(true)
+                .with_admin_logo_letter("B")
+                .with_admin_brand_text("博客管理")
+                .with_admin_models(model::entities::admin_registry())
+                .with_i18ns(vec![
+                    (
+                        "zh-CN".to_owned(),
+                        HashMap::from([
+                            ("model.category".to_owned(), "分类".to_owned()),
+                            ("model.tag".to_owned(), "标签".to_owned()),
+                            ("model.post".to_owned(), "文章".to_owned()),
+                            ("model.comment".to_owned(), "评论".to_owned()),
+                            ("category.name".to_owned(), "名称".to_owned()),
+                            ("tag.name".to_owned(), "名称".to_owned()),
+                            ("post.title".to_owned(), "标题".to_owned()),
+                            ("post.published_at".to_owned(), "发布时间".to_owned()),
+                            ("comment.content".to_owned(), "内容".to_owned()),
+                        ]),
+                    ),
+                    (
+                        "en".to_owned(),
+                        HashMap::from([
+                            ("model.category".to_owned(), "Categories".to_owned()),
+                            ("model.tag".to_owned(), "Tags".to_owned()),
+                            ("model.post".to_owned(), "Posts".to_owned()),
+                            ("model.comment".to_owned(), "Comments".to_owned()),
+                            ("category.name".to_owned(), "Name".to_owned()),
+                            ("tag.name".to_owned(), "Name".to_owned()),
+                            ("post.title".to_owned(), "Title".to_owned()),
+                            ("post.published_at".to_owned(), "Published at".to_owned()),
+                            ("comment.content".to_owned(), "Content".to_owned()),
+                        ]),
+                    ),
+                ])
         })
         .expect("ORM 配置失败");
     match app.run_command_if_requested().await {
@@ -96,11 +130,37 @@ pub async fn run() {
 
 #[cfg(test)]
 mod tests {
-    use afastorm::Field;
+    use afastorm::{Field, Statement, Value};
 
     use crate::model::entities::{
         self, Post, PostFindBy as _, PostFindJson as _, User, UserFindBy as _,
     };
+
+    #[test]
+    fn admin_creation_metadata_exposes_required_fields() {
+        fn assert_create_fields<M: afaster::orm::AFasterAdmin>(required: &[&str]) {
+            for name in required {
+                assert!(
+                    M::ADMIN_INFO
+                        .fields
+                        .iter()
+                        .any(|field| field.rust_name == *name && field.create),
+                    "{} must be available when creating {}",
+                    name,
+                    M::ADMIN_INFO.rust_name
+                );
+            }
+        }
+
+        assert_create_fields::<crate::model::entities::Category>(&["name", "slug"]);
+        assert_create_fields::<crate::model::entities::Tag>(&["name", "slug"]);
+        assert_create_fields::<Post>(&["author_id", "title", "slug", "content"]);
+        assert_create_fields::<crate::model::entities::Comment>(&[
+            "post_id",
+            "author_id",
+            "content",
+        ]);
+    }
 
     #[tokio::test]
     async fn blog_models_register_and_persist_through_repositories() {
@@ -112,7 +172,8 @@ mod tests {
             .await
             .expect("create registered model tables");
 
-        let now = "2026-11-02 00:00:00".to_owned();
+        let now = chrono::NaiveDateTime::parse_from_str("2026-11-02 00:00:00", "%Y-%m-%d %H:%M:%S")
+            .expect("valid test timestamp");
         let mut user = User {
             id: None,
             username: "test-user".into(),
@@ -142,9 +203,9 @@ mod tests {
             view_count: 0,
             like_count: 0,
             is_pinned: true,
-            created_at: now.clone(),
+            created_at: now,
             updated_at: now,
-            published_at: None,
+            published_at: Some(now),
             deleted_at: None,
             version: 0,
         };
@@ -186,7 +247,8 @@ mod tests {
         assert_eq!(fetched.title, "Typed ORM");
         assert!(fetched.is_pinned);
         assert_eq!(fetched.version, 1);
-        assert!(!fetched.created_at.is_empty());
+        assert_ne!(fetched.created_at, chrono::NaiveDateTime::default());
+        assert_eq!(fetched.published_at, Some(now));
 
         let featured = posts
             .find_json_eq_metadata_featured(serde_json::json!(true))
@@ -206,6 +268,19 @@ mod tests {
             .delete_versioned(post_id, fetched.version)
             .await
             .expect("versioned soft delete");
+        let deleted_post_query = Statement::from_sql(
+            orm.dialect(),
+            "SELECT * FROM posts WHERE id = ?",
+            vec![Value::I64(post_id)],
+        )
+        .expect("build deleted post query");
+        let deleted_post = posts
+            .fetch_all(&deleted_post_query)
+            .await
+            .expect("decode soft-deleted post")
+            .pop()
+            .expect("soft-deleted post exists");
+        assert!(deleted_post.deleted_at.is_some());
         assert!(posts.find_by_id(post_id).await.unwrap().is_none());
         posts
             .restore_versioned(post_id, fetched.version + 1)
@@ -235,8 +310,8 @@ mod tests {
             view_count: 0,
             like_count: 0,
             is_pinned: false,
-            created_at: String::new(),
-            updated_at: String::new(),
+            created_at: chrono::NaiveDateTime::default(),
+            updated_at: chrono::NaiveDateTime::default(),
             published_at: None,
             deleted_at: None,
             version: 0,

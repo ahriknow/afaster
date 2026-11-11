@@ -20,6 +20,8 @@ let posts: Vec<Post> = repository.fetch_all(&statement).await?;
 
 Repository 还提供 `all()`、`find_by_id(id)`、`first_where(condition)`、`count()` 和 `count_where(condition)` 等快捷方法。启用软删除的模型，其默认 Repository 查询会自动排除已删除记录。
 
+条件中的列名和排序字段应来自模型定义或受控的服务端代码，不要直接用未经校验的客户端输入构造字段名或 SQL。分页时设置合理的 `limit`，并选择稳定的排序字段。
+
 ## 生成式 `find_by`
 
 在模型字段上标注 `#[orm(find_by)]`，或在模型属性中声明字段组合：
@@ -126,3 +128,5 @@ let post_id = state.orm.inner().transaction(async |transaction| {
 ```
 
 也可以使用 `begin()` 显式控制事务，并调用 `commit()` 或 `rollback()`。事务 Repository 提供与普通 Repository 对应的模型操作。
+
+事务适用于必须一起成功或失败的数据库操作。避免在事务中执行不必要的网络请求或长时间等待，以免长时间占用数据库连接。

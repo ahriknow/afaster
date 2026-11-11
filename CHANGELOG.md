@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.0.10]
+
+### Added
+
+- **ORM Admin**: Add the `afaster-derive` procedural macro and `AFasterAdmin` derive for compile-time-checked model and field administration metadata.
+- **ORM Admin**: Add separate admin model registration, localized model and field labels, ordered language configuration, custom branding, and configurable admin paths.
+- **ORM Admin**: Support paired custom credential/token callbacks, field-level visibility and write permissions, nullable values, date/time and JSON editing, and version-aware updates and deletes.
+- **ORM**: Add opt-in `orm-chrono` and `orm-time` features for `chrono` and `time` model field types.
+- **Example**: Update the blog app to demonstrate separately registered admin metadata, localized labels, and chrono-backed admin fields.
+
+### Changed
+
+- **ORM Admin**: Move admin presentation metadata from ORM model attributes into AFaster's `AFasterAdmin` derive and `AdminModelRegistry`.
+- **ORM Admin**: Keep create, edit, detail, and login dialogs open when clicking the backdrop; dialogs remain closable using their controls or Escape.
+- **Documentation**: Expand ORM setup, model, query, transaction, migration, and admin guides, including feature selection, API behavior, and deployment security notes.
+- **Release**: Publish `afaster-derive` before `afaster`; skip crate versions already present on crates.io.
+
+### Fixed
+
+- **Dependencies**: Match the optional `afaster-derive` dependency requirement to the `0.0.10` release.
+
+
 ## [0.0.9]
 
 ### Added

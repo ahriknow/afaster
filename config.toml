@@ -189,7 +189,7 @@ app_secret = ""                           # 小程序/公众号 AppSecret
 
 # ═══════════════════════════════════════════════════════════════
 #  数据库 ORM
-#  Feature: orm-postgres / orm-sqlite / orm-migrate
+#  Feature: orm-postgres / orm-sqlite / orm-migrate 迁移
 # ═══════════════════════════════════════════════════════════════
 [orm-postgres]
 # host = "127.0.0.1"  # 主机地址
@@ -197,9 +197,13 @@ app_secret = ""                           # 小程序/公众号 AppSecret
 # user = ""           # 用户名
 # pass = ""           # 密码
 # name = ""           # 数据库名
+# token = "password"  # 管理页面访问凭据
+# url = "/admin"      # 管理页面 url
 
 [orm-sqlite]
-# path = "data.db"  # SQLite 文件路径
+# path = "data.db"    # SQLite 文件路径
+# token = "password"  # 管理页面访问凭据
+# url = "/admin"      # 管理页面 url
 
 # ═══════════════════════════════════════════════════════════════
 #  腾讯云 COS 对象存储

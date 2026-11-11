@@ -25,6 +25,7 @@ async fn main() -> afaster::Result<()> {
 ```
 
 `orm-migrate` 会将 `orm` 命令组加入应用 CLI。应在启动服务、播种数据或执行其他有副作用的初始化前处理命令。
+`AFaster::new` 仍会先按配置初始化 ORM 连接；命令在 `run_command_if_requested()` 中执行，处理后提前退出，不会继续启动服务。运行 `makemigrations` 前必须通过 `with_orm` 注册模型。
 
 ## 生成迁移
 
@@ -40,6 +41,8 @@ cargo run -p example -- orm makemigrations add_post_status --dir migrations
 
 首次生成时，工具会创建 schema 快照和迁移文件。后续会将模型 registry 与 `schema.json` 对比，生成 `.up.sql` 和 `.down.sql`。若 schema 没有变化，会提示 `no schema changes found`。
 
+`--dir` 默认为 `migrations`，相对路径以当前工作目录解析。迁移名称会成为文件名的一部分，建议使用简短、可读的 snake_case 名称。
+
 生成后务必审查迁移 SQL 与快照，然后将它们和模型变更一并提交。生成器不会自动应用新迁移。
 
 ## 应用迁移
@@ -49,6 +52,7 @@ cargo run -p example -- orm migrate --dir migrations
 ```
 
 迁移文件名使用时间版本和名称，`.up.sql` 文件按版本顺序执行。成功应用的版本会被记录，重复运行时不会再次执行已应用迁移。SQLite 和 PostgreSQL 的迁移语句在事务中执行；失败的迁移会回滚。
+`migrate` 不要求注册模型，但应用仍需正确配置 ORM 驱动和数据库连接。应用启动本身不会自动创建表或运行迁移。
 
 ## 生成器边界
 
