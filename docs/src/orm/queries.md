@@ -22,6 +22,15 @@ Repository 还提供 `all()`、`find_by_id(id)`、`first_where(condition)`、`co
 
 条件中的列名和排序字段应来自模型定义或受控的服务端代码，不要直接用未经校验的客户端输入构造字段名或 SQL。分页时设置合理的 `limit`，并选择稳定的排序字段。
 
+字段常量由 `afastorm::Model` derive 生成，排序时应直接使用常量：
+
+```rust,ignore
+let statement = repository
+    .query()
+    .order_by(Post::id.desc())
+    .build()?;
+```
+
 ## 生成式 `find_by`
 
 在模型字段上标注 `#[orm(find_by)]`，或在模型属性中声明字段组合：

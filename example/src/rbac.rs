@@ -24,7 +24,7 @@ impl SqliteRbacStore {
             .orm
             .repo::<RbacRole>()
             .map_err(db_error)?
-            .first_where(Field::new("name").eq(name))
+            .first_where(Field::new("name").eq(name.to_owned()))
             .await
             .map_err(db_error)?
             .ok_or_else(|| afaster::Error::custom(42801, format!("角色不存在: {name}")))?;
@@ -58,7 +58,7 @@ impl RbacStore for SqliteRbacStore {
                     .first_where(
                         Field::new("role_id")
                             .eq(role.role_id)
-                            .and(Field::new("permission_code").eq(permission_code.as_str())),
+                            .and(Field::new("permission_code").eq(permission_code.clone())),
                     )
                     .await
                     .map_err(db_error)?
@@ -219,7 +219,7 @@ impl RbacStore for SqliteRbacStore {
                     .first_where(
                         Field::new("role_id")
                             .eq(role_id)
-                            .and(Field::new("permission_code").eq(perm_code.as_str())),
+                            .and(Field::new("permission_code").eq(perm_code.clone())),
                     )
                     .await
                     .map_err(db_error)?
@@ -270,7 +270,7 @@ impl RbacStore for SqliteRbacStore {
                 .orm
                 .repo::<RbacRole>()
                 .map_err(db_error)?
-                .first_where(Field::new("name").eq(name.as_str()))
+                .first_where(Field::new("name").eq(name.clone()))
                 .await
                 .map_err(db_error)?
                 .ok_or_else(|| afaster::Error::custom(42801, format!("角色不存在: {name}")))?;

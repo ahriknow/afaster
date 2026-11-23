@@ -23,6 +23,17 @@ pub struct User {
 
 `chrono` 与 `time` 类型由可选 feature 提供：分别在 AFaster 和 `afastorm` 中启用 `orm-chrono`/`chrono` 或 `orm-time`/`time`。请确认选定的数据库驱动支持该字段类型。
 
+derive 会为每个字段生成同名常量代理，可直接用于条件、排序和字段选择：
+
+```rust,ignore
+let latest = repository
+    .query()
+    .order_by(Post::id.desc())
+    .build()?;
+```
+
+字段代理是常量，不是需要调用的函数；正确用法是 `Post::id.asc()` / `Post::id.desc()`，不要写成 `Post::id().asc()`。
+
 可通过 `ModelRegistry::new().register::<User>()` 注册单个模型，或在统一函数中注册多个模型：
 
 ```rust,ignore

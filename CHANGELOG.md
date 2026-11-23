@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.0.11]
+
+### Added
+
+- **ORM**: Add compile-time MySQL support through the `orm-mysql` feature, including `[orm-mysql]` configuration and MySQL URL construction.
+- **ORM**: Add `afastorm 0.0.2` compatibility for field constants, generic database types, MySQL VARCHAR/unique columns, and model decoding.
+- **Example**: Add separate `orm-sqlite`, `orm-postgres`, and `orm-mysql` Cargo features for compiling the blog binary against each database.
+- **Example**: Add `auto_create` timestamps to category, tag, comment, and RBAC role models for portable database writes.
+- **Example**: Fix category and tag counts in the dashboard statistics API.
+
+### Changed
+
+- **ORM**: Make SQLite, PostgreSQL, and MySQL compile-time mutually exclusive driver choices.
+- **ORM**: Expose database-generic `afastorm::Orm<Database>`, statements, and management handlers consistently across supported drivers.
+- **Docs**: Document MySQL setup, driver switching, migration constraints, and independent binaries for each database.
+- **Example**: Default the blog example to SQLite while retaining PostgreSQL and MySQL feature switches.
+
+### Fixed
+
+- **Example**: Fix generated field usage in all ordering queries to use `Post::id.asc()`-style field constants rather than function calls.
+- **Example**: Fix example model fields that require database-generated timestamps.
+- **Docs**: Fix async Rust doc examples and dependency versions for the 0.0.11 release.
+
 ## [0.0.10]
 
 ### Added

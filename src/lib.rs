@@ -23,14 +23,34 @@ mod state;
 
 #[cfg(all(
     feature = "orm-migrate",
-    not(any(feature = "orm-sqlite", feature = "orm-postgres"))
+    not(any(
+        feature = "orm-sqlite",
+        feature = "orm-postgres",
+        feature = "orm-mysql"
+    ))
 ))]
-compile_error!("feature `orm-migrate` requires `orm-sqlite` or `orm-postgres`");
+compile_error!("feature `orm-migrate` requires `orm-sqlite`, `orm-postgres`, or `orm-mysql`");
 #[cfg(all(
     feature = "orm-admin",
-    not(any(feature = "orm-sqlite", feature = "orm-postgres"))
+    not(any(
+        feature = "orm-sqlite",
+        feature = "orm-postgres",
+        feature = "orm-mysql"
+    ))
 ))]
-compile_error!("feature `orm-admin` requires `orm-sqlite` or `orm-postgres`");
+compile_error!("feature `orm-admin` requires `orm-sqlite`, `orm-postgres`, or `orm-mysql`");
+#[cfg(all(feature = "orm-sqlite", feature = "orm-postgres"))]
+compile_error!(
+    "enable exactly one ORM driver: `orm-sqlite` and `orm-postgres` are mutually exclusive"
+);
+#[cfg(all(feature = "orm-sqlite", feature = "orm-mysql"))]
+compile_error!(
+    "enable exactly one ORM driver: `orm-sqlite` and `orm-mysql` are mutually exclusive"
+);
+#[cfg(all(feature = "orm-postgres", feature = "orm-mysql"))]
+compile_error!(
+    "enable exactly one ORM driver: `orm-postgres` and `orm-mysql` are mutually exclusive"
+);
 
 // ═══════════════════════════════════════════════════════════════
 //  公共导出：核心
@@ -108,7 +128,11 @@ pub use state::github_oauth2;
 pub use state::bloom;
 #[cfg(feature = "memkv")]
 pub use state::memkv;
-#[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+#[cfg(any(
+    feature = "orm-sqlite",
+    feature = "orm-postgres",
+    feature = "orm-mysql"
+))]
 pub use state::orm;
 #[cfg(feature = "rbac")]
 pub use state::rbac;
@@ -180,7 +204,11 @@ pub use state::ali_pay::AFasterAliPayExt;
 pub use state::bloom::AFasterBloomExt;
 #[cfg(feature = "github-oauth2")]
 pub use state::github_oauth2::AFasterGitHubOAuth2Ext;
-#[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+#[cfg(any(
+    feature = "orm-sqlite",
+    feature = "orm-postgres",
+    feature = "orm-mysql"
+))]
 pub use state::orm::AFasterOrmExt;
 #[cfg(feature = "rbac")]
 pub use state::rbac::AFasterRbacExt;
@@ -262,10 +290,13 @@ impl AFaster {
     ///
     /// # 示例
     /// ```rust,no_run
+    /// # #[tokio::main]
+    /// # async fn main() -> afaster::Result<()> {
     /// let state = afaster::AppState::new("Config.toml".into()).await?;
     /// // ... 可在此单独使用/调整 state
     /// let app = afaster::AFaster::from_state(state);
     /// # Ok::<(), afaster::Error>(())
+    /// # }
     /// ```
     pub fn from_state(state: AppState) -> Self {
         Self {
@@ -357,6 +388,10 @@ impl AFaster {
     /// # 示例
     ///
     /// ```rust,no_run
+    /// use afaster::AFaster;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> afaster::Result<()> {
     /// AFaster::new("config.toml".into()).await?
     ///     .with_security_headers(vec![
     ///         ("x-content-type-options", "nosniff"),
@@ -364,6 +399,8 @@ impl AFaster {
     ///         ("content-security-policy", "default-src 'self'; style-src 'self' 'unsafe-inline'"),
     ///     ])
     ///     .run().await;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn with_security_headers(mut self, headers: Vec<(&'static str, &'static str)>) -> Self {
         self.security_headers = Some(headers);
@@ -431,7 +468,11 @@ impl AFaster {
 
         let mut app = AFast::new().state(state.clone()).service(health_svc);
 
-        #[cfg(any(feature = "orm-sqlite", feature = "orm-postgres"))]
+        #[cfg(any(
+            feature = "orm-sqlite",
+            feature = "orm-postgres",
+            feature = "orm-mysql"
+        ))]
         {
             app = app.state(state.orm.inner().clone());
         }

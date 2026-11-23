@@ -1,6 +1,6 @@
 # AFaster 博客示例
 
-这个 workspace 示例是一个基于 AFaster 的多人博客后端，用来展示 HTTP / Binary API、WebSocket、RBAC、JWT、Argon2、SQLite 和 `afastorm` ORM 的组合方式。
+这个 workspace 示例是一个基于 AFaster 的多人博客后端，用来展示 HTTP / Binary API、WebSocket、RBAC、JWT、Argon2、SQLite/PostgreSQL/MySQL 和 `afastorm` ORM 的组合方式。
 
 示例包含注册与登录、文章和分类/标签、评论、点赞、管理操作、RBAC 角色权限、WebSocket 聊天、Binary 聊天，以及公开 HTTP API。HTTP API 提供健康检查、文章/分类/标签查询、精选文章和统计等接口。
 
@@ -8,11 +8,21 @@
 
 - Rust toolchain（edition 2024）
 - 从仓库根目录执行 Cargo 命令
-- SQLite 本地文件数据库，无需另行启动数据库服务
+- 默认可使用 SQLite 本地文件数据库；切换 PostgreSQL 或 MySQL 时需要对应数据库服务
 
 ## 首次运行
 
 示例配置位于 [`config.toml`](./config.toml)，默认 SQLite 文件 `blog.db` 相对于仓库根目录创建，HTTP 服务默认监听 `0.0.0.0:6080`。
+
+示例提供三个互斥的 ORM feature：
+
+```sh
+cargo run -p example --no-default-features --features orm-sqlite
+cargo run -p example --no-default-features --features orm-postgres
+cargo run -p example --no-default-features --features orm-mysql
+```
+
+切换数据库时只需要修改 `example/config.toml` 中对应的 `[orm-sqlite]`、`[orm-postgres]` 或 `[orm-mysql]` section，并重新编译运行目标 feature；业务模型与处理器代码无需修改。由于 ORM 驱动是编译期泛型，单个二进制不能同时切换三种数据库。
 
 先应用数据库迁移：
 
@@ -63,6 +73,7 @@ cargo run -p example
 - 字段属性 `#[orm(find_by)]` 生成单字段方法，如 `find_by_username`。
 - 模型属性 `find_by(author_id, slug)` 生成组合查询 `find_by_author_id_slug`。
 - `find_json(metadata.featured, eq)` 和 `find_json(metadata, contains, has_key)` 生成 JSON 查找方法。
+- 排序字段使用模型宏生成的常量，例如 `Post::id.desc()`、`Tag::id.asc()` 和 `Post::published_at.desc()`。
 
 ### 事务与生命周期
 
@@ -70,7 +81,7 @@ cargo run -p example
 
 ## 数据库迁移
 
-SQL 迁移位于仓库根目录的 `migrations/`，采用 SQLite 语法。虽然示例 crate 启用了 PostgreSQL 驱动用于 ORM 功能构建，但这组迁移不是 PostgreSQL 方言，不能直接用于 PostgreSQL。
+SQL 迁移位于仓库根目录的 `migrations/`。当前迁移目录中的 SQL 为 SQLite 方言，PostgreSQL 和 MySQL 应使用对应方言生成或维护独立迁移历史，不要共用一组迁移目录。
 
 迁移文件显式管理，应用启动不会自动建表或迁移。应用模型发生变化时，在仓库根目录运行：
 
@@ -106,4 +117,11 @@ migrations/             # SQLite up/down SQL 和 schema 快照
 cargo test -p example
 ```
 
-ORM 核心查询、derive 和 SQLite / PostgreSQL 类型测试位于独立的 `afastorm` crate 仓库。
+切换到 PostgreSQL 或 MySQL 编译时，使用对应 feature：
+
+```sh
+cargo test -p example --no-default-features --features orm-postgres
+cargo test -p example --no-default-features --features orm-mysql
+```
+
+ORM 核心查询、derive、迁移和 SQLite / PostgreSQL / MySQL 类型测试位于独立的 `afastorm` crate 仓库。

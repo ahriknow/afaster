@@ -1,6 +1,6 @@
 # 接入与配置
 
-> Features：`orm-sqlite` 或 `orm-postgres`；可选 `orm-chrono`、`orm-time`、`orm-admin`、`orm-migrate`
+> Features：`orm-sqlite`、`orm-postgres` 或 `orm-mysql`；可选 `orm-chrono`、`orm-time`、`orm-admin`、`orm-migrate`
 
 ## 依赖 Feature
 
@@ -8,19 +8,19 @@ AFaster 的 ORM 驱动通过 Feature 选择。应用只应在配置中使用已�
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.10", default-features = false, features = [
+afaster = { version = "0.0.11", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-migrate",
 ] }
-afastorm = { version = "0.0.1", default-features = false, features = [
+afastorm = { version = "0.0.2", default-features = false, features = [
     "derive",
     "sqlite",
     "migrate",
 ] }
 ```
 
-若要同时启用 PostgreSQL 和 SQLite 的代码路径，可在两边都启用对应 feature，但单个运行实例仍只能配置一个 ORM section。`orm-admin` 需要 `orm-sqlite` 或 `orm-postgres`；`orm-migrate` 会启用命令行支持。
+`orm-sqlite`、`orm-postgres` 和 `orm-mysql` 一次只能启用一个。多个 ORM 驱动会在编译期报错；`orm-admin` 和 `orm-migrate` 可与任一驱动组合启用。
 `orm-chrono` 和 `orm-time` 分别为 `afastorm` 启用 `chrono` 和 `time` 类型支持。使用这些类型时，应用还应在 `afastorm` 依赖中启用对应的 `chrono` 或 `time` feature；普通类型模型不需要开启。
 
 ## SQLite 配置
@@ -54,6 +54,30 @@ url = "/admin"
 
 `host`、`port`、`user`、`pass`、`name` 为连接配置；密码和管理端 token 应通过部署环境提供，不要提交真实凭据。
 用户名、密码和数据库名中的 URL 特殊字符会进行 percent-encoding；host 应填写主机名或 IP，不包含 scheme 和端口。
+
+## MySQL 配置
+
+```toml
+[orm-mysql]
+host = "127.0.0.1"
+port = 3306
+user = "app"
+pass = "replace-me"
+name = "app_db"
+
+# 可选的 ORM 管理端静态 token：
+# token = "从部署环境注入的静态 Bearer token"
+url = "/admin"
+```
+
+启用 MySQL 时，在 AFaster 和 `afastorm` 两侧都启用对应 feature：
+
+```toml
+afaster = { version = "0.0.11", features = ["orm-mysql"] }
+afastorm = { version = "0.0.2", features = ["derive", "mysql", "migrate"] }
+```
+
+`orm-mysql`、`orm-postgres` 和 `orm-sqlite` 是互斥的编译期驱动选择。单个二进制只能使用当前编译启用的一个 ORM 驱动；切换数据库必须重新编译二进制或在完成动态 ORM 抽象前使用独立二进制。
 
 ## 初始化应用并注册模型
 

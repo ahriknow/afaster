@@ -10,19 +10,20 @@ secret = "blog-example-jwt-secret-key-change-in-production"
 # worker_id = 1
 # datacenter_id = 1
 
+# PostgreSQL ORM 配置（启用 orm-postgres feature 后使用）
 [orm-sqlite]
 path = "blog.db"
 token = "password"
 url = "/admin"
 
-# PostgreSQL ORM 配置（启用 orm-postgres feature 后使用）
-# [orm-postgres]
+# MySQL ORM 配置（启用 orm-mysql feature 后使用）
+# [orm-mysql]
 # host = "127.0.0.1"
-# port = 5432
-# user = "postgres"
-# pass = "" # 通过本地环境提供，不要提交密码
-# name = "afastorm_test"
-# token = "replace-with-a-private-token"
+# port = 3306
+# user = "afaster"
+# pass = "afaster"
+# name = "afaster_example"
+# token = "password"
 # url = "/admin"
 
 # [tls]

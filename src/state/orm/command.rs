@@ -61,9 +61,10 @@ impl crate::CommandModule for OrmMigrateCommands {
                         ));
                     }
                     let snapshot = app.state.orm.schema_snapshot().map_err(command_error)?;
-                    let created =
-                        afastorm::migration::create_schema_migration(directory, name, &snapshot)
-                            .map_err(command_error)?;
+                    let created = afastorm::migration::create_schema_migration::<
+                        super::config::Database,
+                    >(directory, name, &snapshot)
+                    .map_err(command_error)?;
                     if !created {
                         println!("no schema changes found");
                     }

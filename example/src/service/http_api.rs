@@ -282,7 +282,7 @@ pub async fn site_stats(
     State(state): State<afaster::AppState>,
     Ctx(trace): Ctx<TraceContext>,
 ) -> afast::Result<Json<DashboardStats>> {
-    let (total_users, total_posts, total_comments) = {
+    let (total_users, total_posts, total_comments, total_categories, total_tags) = {
         let _s = state.tracing.span_name(&trace, "aggregate_stats");
         let users = state
             .orm
@@ -305,15 +305,29 @@ pub async fn site_stats(
             .count()
             .await
             .map_err(db_error)?;
-        (users, posts, comments)
+        let categories = state
+            .orm
+            .repo::<Category>()
+            .map_err(db_error)?
+            .count()
+            .await
+            .map_err(db_error)?;
+        let tags = state
+            .orm
+            .repo::<Tag>()
+            .map_err(db_error)?
+            .count()
+            .await
+            .map_err(db_error)?;
+        (users, posts, comments, categories, tags)
     };
 
     Ok(Json(DashboardStats {
         total_posts,
         total_users,
         total_comments,
-        total_categories: 0,
-        total_tags: 0,
+        total_categories,
+        total_tags,
     }))
 }
 

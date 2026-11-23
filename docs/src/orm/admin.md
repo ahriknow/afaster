@@ -1,6 +1,6 @@
 # 自动管理端
 
-> Feature：`orm-admin`，且需启用 `orm-sqlite` 或 `orm-postgres`。管理端元数据由 AFaster 提供，不属于独立 ORM crate `afastorm`。
+> Feature：`orm-admin`，且需启用 `orm-sqlite`、`orm-postgres` 或 `orm-mysql`。管理端元数据由 AFaster 提供，不属于独立 ORM crate `afastorm`。
 
 AFaster 根据 `#[derive(AFasterAdmin)]` 生成的展示元数据，以及 ORM 模型元数据创建管理页面和数据 API。数据库字段类型、表名、主键、软删除和版本锁由 `afastorm::Model` 定义；label、字段顺序、展示和编辑权限由 AFaster 管理。
 
@@ -115,7 +115,7 @@ use std::collections::HashMap;
 | 模式 | 配置 | 行为 |
 |---|---|---|
 | 无认证 | 不配置 token | 管理 API 不验证请求者；只适用于隔离的可信网络 |
-| 静态 token | `[orm-sqlite]` / `[orm-postgres]` 的 `token` 或 `.with_admin_token(...)` | 浏览器提示输入已配置的 token，并以 Bearer token 访问 API |
+| 静态 token | `[orm-sqlite]` / `[orm-postgres]` / `[orm-mysql]` 的 `token` 或 `.with_admin_token(...)` | 浏览器提示输入已配置的 token，并以 Bearer token 访问 API |
 | 自定义认证 | `.with_admin_token_functions(generate, verify)` | 登录凭据交给 `generate`；返回 token 后，后续请求由 `verify` 验证 |
 
 自定义认证的 `POST /api/token` 用于凭据换 token，本身不要求已有 Bearer token；静态 token 模式不使用此登录接口。

@@ -7,6 +7,12 @@ edition = "2024"
 name = "blog"
 path = "src/main.rs"
 
+[features]
+default = ["orm-sqlite"]
+orm-sqlite = ["afaster/orm-sqlite"]
+orm-postgres = ["afaster/orm-postgres"]
+orm-mysql = ["afaster/orm-mysql"]
+
 [dependencies]
 afaster = { workspace = true, features = [
     "jwt",
@@ -27,14 +33,13 @@ afaster = { workspace = true, features = [
     "trace",
     "afast-code",
     "trace-sqlite",
-    "orm-sqlite",
     "orm-admin",
     "orm-chrono",
     "orm-migrate",
     # "acme",
     "ext",
 ] }
-afastorm = { workspace = true, features = ["derive", "sqlite", "postgres", "migrate"] }
+afastorm = { workspace = true, features = ["derive", "sqlite", "postgres", "mysql", "migrate"] }
 afast = { workspace = true }
 afastdata = { workspace = true }
 tokio = { workspace = true }

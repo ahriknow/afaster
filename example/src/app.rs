@@ -6,7 +6,7 @@ use crate::{bootstrap, model, rbac::SqliteRbacStore, service};
 pub async fn run() {
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║              多人博客系统 (Blog System)                  ║");
-    println!("║    HTTP Binary + RBAC + SQLite + JWT + Argon2 ..         ║");
+    println!("║    HTTP/Binary + RBAC + ORM + JWT + Argon2              ║");
     println!("╚══════════════════════════════════════════════════════════╝\n");
 
     let app = afaster::AFaster::new("example/config.toml".to_string())
@@ -60,6 +60,9 @@ pub async fn run() {
     }
 
     let orm = app.state().orm.clone();
+    orm.create_registered_tables()
+        .await
+        .expect("创建 ORM 注册表失败");
     let app = app
         .with_rbac(|rbac| rbac.with_store(SqliteRbacStore::new(orm.clone())))
         .expect("RBAC 配置失败");
@@ -130,7 +133,7 @@ pub async fn run() {
 
 #[cfg(test)]
 mod tests {
-    use afastorm::{Field, Statement, Value};
+    use afastorm::{BindValue, Field, Statement};
 
     use crate::model::entities::{
         self, Post, PostFindBy as _, PostFindJson as _, User, UserFindBy as _,
@@ -268,10 +271,10 @@ mod tests {
             .delete_versioned(post_id, fetched.version)
             .await
             .expect("versioned soft delete");
-        let deleted_post_query = Statement::from_sql(
+        let deleted_post_query = Statement::<afastorm::sqlx::Sqlite>::from_sql(
             orm.dialect(),
             "SELECT * FROM posts WHERE id = ?",
-            vec![Value::I64(post_id)],
+            vec![BindValue::new(post_id)],
         )
         .expect("build deleted post query");
         let deleted_post = posts

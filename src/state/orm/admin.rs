@@ -1,3 +1,4 @@
+use super::config::Database;
 use afast::{
     Body, Header, Html, HttpResult, Json, Param, Query, State, delete, get, patch, post, service,
 };
@@ -10,8 +11,8 @@ use std::{
 };
 
 use afastorm::{
-    Error as OrmError, FieldInfo, FieldType, ModelInfo, ModelRegistry, Orm, OrmDecode, OrmRow,
-    Statement, Value,
+    BindValue, Dialect, Error as OrmError, FieldInfo, FieldType, ModelInfo, ModelRegistry, Orm,
+    OrmDatabase, Statement,
 };
 
 pub type AdminTokenGenerator = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -766,7 +767,7 @@ async fn list_models(
 
 #[get(desc("List rows for an admin model"))]
 async fn list_rows(
-    State(orm): State<Orm>,
+    State(orm): State<Orm<Database>>,
     State(auth): State<AdminAuth>,
     Header(header): Header<AdminHeaders>,
     Param(path): Param<ModelPath>,
@@ -814,7 +815,7 @@ async fn list_rows(
         if !search_fields.is_empty() {
             let mut search_predicates = Vec::with_capacity(search_fields.len());
             for field in search_fields {
-                binds.push(Value::String(format!("%{search}%")));
+                binds.push(BindValue::new(format!("%{search}%")));
                 search_predicates.push(format!("{} LIKE ?", quote_column(orm, field.column_name)?));
             }
             predicates.push(format!("({})", search_predicates.join(" OR ")));
@@ -831,7 +832,8 @@ async fn list_rows(
     }
     let (total,): (i64,) = orm
         .fetch_one(
-            &Statement::from_sql(orm.dialect(), &count_sql, binds.clone()).map_err(admin_error)?,
+            &Statement::<Database>::from_sql(orm.dialect(), &count_sql, binds.clone())
+                .map_err(admin_error)?,
         )
         .await
         .map_err(admin_error)?;
@@ -840,7 +842,9 @@ async fn list_rows(
     let offset = page.saturating_sub(1).saturating_mul(limit);
     sql.push_str(&format!(" LIMIT {limit} OFFSET {offset}"));
     let rows = orm
-        .fetch_rows(&Statement::from_sql(orm.dialect(), &sql, binds).map_err(admin_error)?)
+        .fetch_rows(
+            &Statement::<Database>::from_sql(orm.dialect(), &sql, binds).map_err(admin_error)?,
+        )
         .await
         .map_err(admin_error)?;
     let items = rows
@@ -852,7 +856,8 @@ async fn list_rows(
                 .expect("row serialization creates an object")
                 .insert("__id".to_owned(), JsonValue::String(id));
             if let Some(version) = info.version_field {
-                let version = <i64 as OrmDecode>::decode(row, version).map_err(admin_error)?;
+                let version = <Database as OrmDatabase>::decode_named::<i64>(row, version)
+                    .map_err(admin_error)?;
                 item.as_object_mut()
                     .expect("row serialization creates an object")
                     .insert("__version".to_owned(), JsonValue::from(version));
@@ -867,7 +872,7 @@ async fn list_rows(
 
 #[get(desc("Get an admin model row"))]
 async fn get_row(
-    State(orm): State<Orm>,
+    State(orm): State<Orm<Database>>,
     State(auth): State<AdminAuth>,
     Header(header): Header<AdminHeaders>,
     Param(path): Param<RowPath>,
@@ -892,7 +897,8 @@ async fn get_row(
         .ok_or_else(|| client_error(404, "row not found"))?;
     let mut value = row_to_json(&row, &fields).map_err(admin_error)?;
     if let Some(version) = info.version_field {
-        let version = <i64 as OrmDecode>::decode(&row, version).map_err(admin_error)?;
+        let version =
+            <Database as OrmDatabase>::decode_named::<i64>(&row, version).map_err(admin_error)?;
         value
             .as_object_mut()
             .expect("row serialization creates an object")
@@ -903,7 +909,7 @@ async fn get_row(
 
 #[post(desc("Create an admin model row"))]
 async fn create_row(
-    State(orm): State<Orm>,
+    State(orm): State<Orm<Database>>,
     State(auth): State<AdminAuth>,
     Header(header): Header<AdminHeaders>,
     Param(path): Param<ModelPath>,
@@ -939,7 +945,7 @@ async fn create_row(
     }
     if let Some(version) = info.version_field {
         fields.push(quote_column(orm, version)?);
-        values.push(Value::I64(1));
+        values.push(BindValue::new(1_i64));
         expressions.push("?".to_owned());
     }
     if fields.is_empty() {
@@ -951,15 +957,17 @@ async fn create_row(
         fields.join(", "),
         expressions.join(", ")
     );
-    orm.execute(&Statement::from_sql(orm.dialect(), &sql, values).map_err(admin_error)?)
-        .await
-        .map_err(admin_error)?;
+    orm.execute(
+        &Statement::<Database>::from_sql(orm.dialect(), &sql, values).map_err(admin_error)?,
+    )
+    .await
+    .map_err(admin_error)?;
     Ok(Json(AdminJson(json!({ "ok": true }))))
 }
 
 #[patch(desc("Update an admin model row"))]
 async fn update_row(
-    State(orm): State<Orm>,
+    State(orm): State<Orm<Database>>,
     State(auth): State<AdminAuth>,
     Header(header): Header<AdminHeaders>,
     Param(path): Param<RowPath>,
@@ -1020,7 +1028,7 @@ async fn update_row(
             .get(version_column)
             .and_then(JsonValue::as_i64)
             .ok_or_else(|| client_error(400, "version is required for a versioned update"))?;
-        binds.push(Value::I64(expected));
+        binds.push(BindValue::new(expected));
         where_clause.push_str(&format!(
             " AND {} = {}",
             quote_column(orm, version_column)?,
@@ -1033,7 +1041,7 @@ async fn update_row(
         assignments.join(", ")
     );
     let result = orm
-        .execute(&Statement::from_sql(orm.dialect(), &sql, binds).map_err(admin_error)?)
+        .execute(&Statement::<Database>::from_sql(orm.dialect(), &sql, binds).map_err(admin_error)?)
         .await
         .map_err(admin_error)?;
     if result.rows_affected == 0 && info.version_field.is_some() {
@@ -1044,7 +1052,7 @@ async fn update_row(
 
 #[delete(desc("Delete an admin model row"))]
 async fn delete_row(
-    State(orm): State<Orm>,
+    State(orm): State<Orm<Database>>,
     State(auth): State<AdminAuth>,
     Header(header): Header<AdminHeaders>,
     Param(path): Param<RowPath>,
@@ -1066,7 +1074,7 @@ async fn delete_row(
         let version = version
             .parse::<i64>()
             .map_err(|_| client_error(400, "version must be an integer"))?;
-        binds.push(Value::I64(version));
+        binds.push(BindValue::new(version));
         where_clause.push_str(&format!(
             " AND {} = {}",
             quote_column(orm, version_column)?,
@@ -1101,7 +1109,7 @@ async fn delete_row(
         )
     };
     let result = orm
-        .execute(&Statement::from_sql(orm.dialect(), &sql, binds).map_err(admin_error)?)
+        .execute(&Statement::<Database>::from_sql(orm.dialect(), &sql, binds).map_err(admin_error)?)
         .await
         .map_err(admin_error)?;
     Ok(Json(AdminJson(json!({ "ok": result.rows_affected > 0 }))))
@@ -1171,27 +1179,30 @@ fn field_json(
     })
 }
 
-fn row_to_json(row: &OrmRow, fields: &[&AdminField]) -> afastorm::Result<JsonValue> {
+fn row_to_json(
+    row: &<Database as afastorm::Database>::Row,
+    fields: &[&AdminField],
+) -> afastorm::Result<JsonValue> {
     let mut object = Map::new();
-    for field in fields {
+    for (index, field) in fields.iter().enumerate() {
         let value = match field.field_type {
-            FieldType::Bool => optional_field_json::<bool>(row, field)?,
-            FieldType::I16 => optional_field_json::<i16>(row, field)?,
-            FieldType::I32 => optional_field_json::<i32>(row, field)?,
-            FieldType::I64 => optional_field_json::<i64>(row, field)?,
-            FieldType::F32 => optional_field_json::<f32>(row, field)?,
-            FieldType::F64 => optional_field_json::<f64>(row, field)?,
-            FieldType::String => optional_field_json::<String>(row, field)?,
+            FieldType::Bool => optional_field_json::<bool>(row, index)?,
+            FieldType::I16 => optional_field_json::<i16>(row, index)?,
+            FieldType::I32 => optional_field_json::<i32>(row, index)?,
+            FieldType::I64 => optional_field_json::<i64>(row, index)?,
+            FieldType::F32 => optional_field_json::<f32>(row, index)?,
+            FieldType::F64 => optional_field_json::<f64>(row, index)?,
+            FieldType::String => optional_field_json::<String>(row, index)?,
             FieldType::Date | FieldType::Time | FieldType::Timestamp | FieldType::TimestampTz => {
-                optional_field_json::<String>(row, field)?
+                optional_field_json::<String>(row, index)?
             }
-            FieldType::Bytes => <Option<Vec<u8>> as OrmDecode>::decode(row, field.column_name)
+            FieldType::Bytes => <Database as OrmDatabase>::decode::<Option<Vec<u8>>>(row, index)
                 .map(|value| {
                     value.map_or(JsonValue::Null, |bytes| {
                         JsonValue::Array(bytes.into_iter().map(JsonValue::from).collect())
                     })
                 })?,
-            FieldType::Json => optional_field_json::<JsonValue>(row, field)?,
+            FieldType::Json => optional_field_json::<JsonValue>(row, index)?,
             field_type => {
                 return Err(OrmError::UnsupportedFieldType(match field_type {
                     FieldType::Uuid => "UUID admin display",
@@ -1213,16 +1224,20 @@ fn row_to_json(row: &OrmRow, fields: &[&AdminField]) -> afastorm::Result<JsonVal
     Ok(JsonValue::Object(object))
 }
 
-fn optional_field_json<T>(row: &OrmRow, field: &FieldInfo) -> afastorm::Result<JsonValue>
+fn optional_field_json<T>(
+    row: &<Database as afastorm::Database>::Row,
+    index: usize,
+) -> afastorm::Result<JsonValue>
 where
-    T: OrmDecode + Into<JsonValue>,
+    for<'r> T:
+        afastorm::sqlx::Decode<'r, Database> + afastorm::sqlx::Type<Database> + Into<JsonValue>,
 {
-    Ok(<Option<T> as OrmDecode>::decode(row, field.column_name)?
+    Ok(<Database as OrmDatabase>::decode::<Option<T>>(row, index)?
         .map(Into::into)
         .unwrap_or(JsonValue::Null))
 }
 
-fn row_id(row: &OrmRow, field: &FieldInfo) -> HttpResult<String> {
+fn row_id(row: &<Database as afastorm::Database>::Row, field: &FieldInfo) -> HttpResult<String> {
     let id = match field.field_type {
         FieldType::Bool => decoded_id::<bool>(row, field)?,
         FieldType::I16 => decoded_id::<i16>(row, field)?,
@@ -1236,22 +1251,26 @@ fn row_id(row: &OrmRow, field: &FieldInfo) -> HttpResult<String> {
     Ok(id)
 }
 
-fn decoded_id<T>(row: &OrmRow, field: &FieldInfo) -> HttpResult<String>
+fn decoded_id<T>(
+    row: &<Database as afastorm::Database>::Row,
+    field: &FieldInfo,
+) -> HttpResult<String>
 where
-    T: OrmDecode + std::fmt::Display,
+    for<'r> T:
+        afastorm::sqlx::Decode<'r, Database> + afastorm::sqlx::Type<Database> + std::fmt::Display,
 {
-    <T as OrmDecode>::decode(row, field.column_name)
+    <Database as OrmDatabase>::decode_named::<T>(row, field.column_name)
         .map(|id| id.to_string())
         .map_err(admin_error)
 }
 
 fn row_select(
-    orm: &Orm,
+    orm: &Orm<Database>,
     info: &AdminModel,
     fields: &[&AdminField],
     id: &str,
     include_soft_delete_filter: bool,
-) -> HttpResult<Statement> {
+) -> HttpResult<Statement<Database>> {
     let primary = primary_key(info)?;
     let mut selected = fields
         .iter()
@@ -1274,24 +1293,24 @@ fn row_select(
         quote_table(orm, info)?,
         quote_column(orm, primary.column_name)?
     );
-    let mut binds = vec![parse_id(id, primary)?];
+    let binds = vec![parse_id(id, primary)?];
     if include_soft_delete_filter && let Some(deleted_at) = info.soft_delete_field {
         sql.push_str(&format!(" AND {} IS NULL", quote_column(orm, deleted_at)?));
     }
-    Statement::from_sql(orm.dialect(), &sql, std::mem::take(&mut binds)).map_err(admin_error)
+    Statement::<Database>::from_sql(orm.dialect(), &sql, binds).map_err(admin_error)
 }
 
-fn quote_table(orm: &Orm, info: &ModelInfo) -> HttpResult<String> {
+fn quote_table(orm: &Orm<Database>, info: &ModelInfo) -> HttpResult<String> {
     orm.dialect()
         .quote_identifier(info.table_name)
         .map_err(admin_error)
 }
 
-fn quote_column(orm: &Orm, name: &str) -> HttpResult<String> {
+fn quote_column(orm: &Orm<Database>, name: &str) -> HttpResult<String> {
     orm.dialect().quote_identifier(name).map_err(admin_error)
 }
 
-fn select_column(orm: &Orm, field: &FieldInfo) -> HttpResult<String> {
+fn select_column(orm: &Orm<Database>, field: &FieldInfo) -> HttpResult<String> {
     let column = quote_column(orm, field.column_name)?;
     if orm.dialect().name() == "postgres" {
         let cast = match field.field_type {
@@ -1309,7 +1328,7 @@ fn select_column(orm: &Orm, field: &FieldInfo) -> HttpResult<String> {
     Ok(column)
 }
 
-fn field_value_placeholder(orm: &Orm, field: &FieldInfo) -> String {
+fn field_value_placeholder(orm: &Orm<Database>, field: &FieldInfo) -> String {
     if orm.dialect().name() != "postgres" {
         return "?".to_owned();
     }
@@ -1322,42 +1341,74 @@ fn field_value_placeholder(orm: &Orm, field: &FieldInfo) -> String {
     }
 }
 
-fn json_to_value(value: &JsonValue, field: &FieldInfo) -> HttpResult<Value> {
+fn json_to_value(value: &JsonValue, field: &FieldInfo) -> HttpResult<BindValue<Database>> {
     if value.is_null() && field.nullable {
-        return Ok(Value::Null(field.field_type));
+        if field.field_type == FieldType::Json {
+            #[cfg(feature = "orm-postgres")]
+            return Ok(BindValue::new(
+                None::<afastorm::sqlx::types::Json<JsonValue>>,
+            ));
+            #[cfg(feature = "orm-sqlite")]
+            return Ok(BindValue::new(None::<String>));
+            #[cfg(feature = "orm-mysql")]
+            return Ok(BindValue::new(
+                None::<afastorm::sqlx::types::Json<JsonValue>>,
+            ));
+        }
+        let value = match field.field_type {
+            FieldType::Bool => BindValue::new(None::<bool>),
+            FieldType::I16 => BindValue::new(None::<i16>),
+            FieldType::I32 => BindValue::new(None::<i32>),
+            FieldType::I64 => BindValue::new(None::<i64>),
+            FieldType::F32 => BindValue::new(None::<f32>),
+            FieldType::F64 => BindValue::new(None::<f64>),
+            FieldType::String
+            | FieldType::Date
+            | FieldType::Time
+            | FieldType::Timestamp
+            | FieldType::TimestampTz => BindValue::new(None::<String>),
+            FieldType::Bytes => BindValue::new(None::<Vec<u8>>),
+            _ => {
+                return Err(client_error(
+                    400,
+                    "null is not supported for this field type",
+                ));
+            }
+        };
+        return Ok(value);
+    }
+    if field.field_type == FieldType::Json {
+        let value = match value.as_str() {
+            Some(raw) => serde_json::from_str(raw)
+                .map_err(|_| client_error(400, "field value must contain valid JSON"))?,
+            None => value.clone(),
+        };
+        return Ok(<Database as OrmDatabase>::json_parameter(value));
     }
     let value = match field.field_type {
-        FieldType::Bool => value.as_bool().map(Value::Bool),
+        FieldType::Bool => value.as_bool().map(BindValue::new),
         FieldType::I16 => value
             .as_i64()
             .and_then(|value| i16::try_from(value).ok())
-            .map(Value::I16),
+            .map(BindValue::new),
         FieldType::I32 => value
             .as_i64()
             .and_then(|value| i32::try_from(value).ok())
-            .map(Value::I32),
-        FieldType::I64 => value.as_i64().map(Value::I64),
+            .map(BindValue::new),
+        FieldType::I64 => value.as_i64().map(BindValue::new),
         FieldType::F32 => value
             .as_f64()
             .map(|value| value as f32)
             .filter(|value| value.is_finite())
-            .map(Value::F32),
-        FieldType::F64 => value.as_f64().map(Value::F64),
-        FieldType::String => value.as_str().map(|value| Value::String(value.to_owned())),
+            .map(BindValue::new),
+        FieldType::F64 => value.as_f64().map(BindValue::new),
+        FieldType::String => value.as_str().map(|value| BindValue::new(value.to_owned())),
         FieldType::Date | FieldType::Time | FieldType::Timestamp | FieldType::TimestampTz => {
-            value.as_str().map(|value| Value::String(value.to_owned()))
+            value.as_str().map(|value| BindValue::new(value.to_owned()))
         }
         FieldType::Bytes => value
             .as_str()
-            .map(|value| Value::Bytes(value.as_bytes().to_vec())),
-        FieldType::Json => match value.as_str() {
-            Some(raw) => Some(
-                serde_json::from_str(raw)
-                    .map(Value::Json)
-                    .map_err(|_| client_error(400, "field value must contain valid JSON"))?,
-            ),
-            None => Some(Value::Json(value.clone())),
-        },
+            .map(|value| BindValue::new(value.as_bytes().to_vec())),
         _ => {
             return Err(client_error(
                 400,
@@ -1368,33 +1419,33 @@ fn json_to_value(value: &JsonValue, field: &FieldInfo) -> HttpResult<Value> {
     value.ok_or_else(|| client_error(400, "field value has the wrong type or is null"))
 }
 
-fn parse_id(id: &str, field: &FieldInfo) -> HttpResult<Value> {
+fn parse_id(id: &str, field: &FieldInfo) -> HttpResult<BindValue<Database>> {
     match field.field_type {
         FieldType::Bool => id
-            .parse()
-            .map(Value::Bool)
+            .parse::<bool>()
+            .map(BindValue::new)
             .map_err(|_| client_error(400, "invalid id")),
         FieldType::I16 => id
-            .parse()
-            .map(Value::I16)
+            .parse::<i16>()
+            .map(BindValue::new)
             .map_err(|_| client_error(400, "invalid id")),
         FieldType::I32 => id
-            .parse()
-            .map(Value::I32)
+            .parse::<i32>()
+            .map(BindValue::new)
             .map_err(|_| client_error(400, "invalid id")),
         FieldType::I64 => id
-            .parse()
-            .map(Value::I64)
+            .parse::<i64>()
+            .map(BindValue::new)
             .map_err(|_| client_error(400, "invalid id")),
         FieldType::F32 => id
-            .parse()
-            .map(Value::F32)
+            .parse::<f32>()
+            .map(BindValue::new)
             .map_err(|_| client_error(400, "invalid id")),
         FieldType::F64 => id
-            .parse()
-            .map(Value::F64)
+            .parse::<f64>()
+            .map(BindValue::new)
             .map_err(|_| client_error(400, "invalid id")),
-        FieldType::String => Ok(Value::String(id.to_owned())),
+        FieldType::String => Ok(BindValue::new(id.to_owned())),
         _ => Err(client_error(400, "unsupported primary key type")),
     }
 }

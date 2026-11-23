@@ -205,6 +205,15 @@ app_secret = ""                           # 小程序/公众号 AppSecret
 # token = "password"  # 管理页面访问凭据
 # url = "/admin"      # 管理页面 url
 
+[orm-mysql]
+# host = "127.0.0.1"  # 主机地址
+# port = 3306         # 端口
+# user = ""           # 用户名
+# pass = ""           # 密码
+# name = ""           # 数据库名
+# token = "password"  # 管理页面访问凭据
+# url = "/admin"      # 管理页面 url
+
 # ═══════════════════════════════════════════════════════════════
 #  腾讯云 COS 对象存储
 #  Feature: cos

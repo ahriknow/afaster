@@ -4,10 +4,10 @@ AFaster 的 ORM 集成基于独立发布的 [`afastorm`](https://crates.io/crate
 
 ORM 与 [`database` 模块](../data/database.md)用途不同：
 
-- `orm-sqlite` / `orm-postgres`：使用模型和 Repository 完成常见 CRUD、类型化查询和迁移。
+- `orm-sqlite` / `orm-postgres` / `orm-mysql`：使用模型和 Repository 完成常见 CRUD、类型化查询和迁移。
 - `db-sqlite` / `db-postgres` / `db-mysql`：直接使用 SQLx pool 编写 SQL，适合需要完整控制 SQL 或使用 ORM 未覆盖数据库的场景。
 
-目前 AFaster 的 ORM 集成内置 SQLite 和 PostgreSQL。每个 AFaster 实例配置一个 ORM 驱动；更换驱动时请使用独立的迁移历史。
+目前 AFaster 的 ORM 集成内置 SQLite、PostgreSQL 和 MySQL。每个 AFaster 实例配置一个 ORM 驱动；三个驱动在编译期互斥，切换驱动需要重新编译独立二进制，并使用对应数据库的迁移历史。
 
 ## 按需启用
 
@@ -15,6 +15,7 @@ ORM 与 [`database` 模块](../data/database.md)用途不同：
 |---|---|
 | `orm-sqlite` | SQLite ORM 驱动 |
 | `orm-postgres` | PostgreSQL ORM 驱动 |
+| `orm-mysql` | MySQL ORM 驱动 |
 | `orm-chrono` | 启用 `afastorm` 对 `chrono` 类型的支持 |
 | `orm-time` | 启用 `afastorm` 对 `time` crate 类型的支持 |
 | `orm-admin` | 挂载基于模型属性配置的管理端；需要同时启用一个 ORM 驱动 |
@@ -24,13 +25,13 @@ ORM 与 [`database` 模块](../data/database.md)用途不同：
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.10", default-features = false, features = [
+afaster = { version = "0.0.11", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-admin",
     "orm-migrate",
 ] }
-afastorm = { version = "0.0.1", default-features = false, features = [
+afastorm = { version = "0.0.2", default-features = false, features = [
     "derive",
     "sqlite",
     "migrate",

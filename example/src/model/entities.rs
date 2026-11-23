@@ -44,6 +44,7 @@ pub struct Category {
     pub description: String,
     #[admin(label = "排序", list, order = 3, detail, create, update)]
     pub sort_order: i32,
+    #[orm(auto_create)]
     pub created_at: chrono::NaiveDateTime,
 }
 
@@ -60,6 +61,7 @@ pub struct Tag {
     #[orm(unique)]
     #[admin(label = "Slug", list, detail, create, update, search)]
     pub slug: String,
+    #[orm(auto_create)]
     pub created_at: chrono::NaiveDateTime,
 }
 
@@ -155,6 +157,7 @@ pub struct Comment {
     pub content: String,
     #[admin(label = "状态", list, detail, create, update)]
     pub status: i32,
+    #[orm(auto_create)]
     pub created_at: chrono::NaiveDateTime,
 }
 
@@ -166,6 +169,7 @@ pub struct RbacRole {
     #[orm(unique)]
     pub name: String,
     pub display_name: String,
+    #[orm(auto_create)]
     pub created_at: chrono::NaiveDateTime,
 }
 

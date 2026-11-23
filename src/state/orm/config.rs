@@ -8,6 +8,13 @@ use afastorm::{ModelInfo, ModelRegistry};
 use serde::Deserialize;
 
 #[cfg(feature = "orm-sqlite")]
+pub(crate) type Database = afastorm::sqlx::Sqlite;
+#[cfg(feature = "orm-postgres")]
+pub(crate) type Database = afastorm::sqlx::Postgres;
+#[cfg(feature = "orm-mysql")]
+pub(crate) type Database = afastorm::sqlx::MySql;
+
+#[cfg(feature = "orm-sqlite")]
 #[derive(Deserialize)]
 struct SqliteOrmSettings {
     path: String,
@@ -27,9 +34,21 @@ struct PostgresOrmSettings {
     url: Option<String>,
 }
 
+#[cfg(feature = "orm-mysql")]
+#[derive(Deserialize)]
+struct MysqlOrmSettings {
+    host: String,
+    port: u16,
+    user: String,
+    pass: String,
+    name: String,
+    token: Option<String>,
+    url: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct Orm {
-    inner: afastorm::Orm,
+    inner: afastorm::Orm<Database>,
     #[cfg(feature = "orm-admin")]
     admin_enabled: bool,
     #[cfg(feature = "orm-admin")]
@@ -55,7 +74,7 @@ impl Orm {
         let (database_url, token, admin_url) = Self::database_settings(table)?;
         #[cfg(not(feature = "orm-admin"))]
         let _ = (&token, &admin_url);
-        let inner = afastorm::Orm::connect(database_url)
+        let inner = afastorm::Orm::<Database>::connect(database_url)
             .await
             .map_err(|error| {
                 crate::Error::custom(50901, format!("ORM initialization failed: {error}"))
@@ -86,9 +105,26 @@ impl Orm {
     fn database_settings(
         table: &toml::Table,
     ) -> crate::Result<(String, Option<String>, Option<String>)> {
-        let mut settings = None;
         #[cfg(feature = "orm-sqlite")]
-        if table.contains_key("orm-sqlite") {
+        {
+            if table.contains_key("orm-postgres") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the SQLite ORM; remove [orm-postgres]",
+                ));
+            }
+            if table.contains_key("orm-mysql") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the SQLite ORM; remove [orm-mysql]",
+                ));
+            }
+            if !table.contains_key("orm-sqlite") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "configure the compile-time SQLite database in [orm-sqlite]",
+                ));
+            }
             let config: SqliteOrmSettings = crate::state::extract(table, "orm-sqlite")?;
             let url = if config.path == ":memory:" {
                 "sqlite::memory:".to_owned()
@@ -97,16 +133,29 @@ impl Orm {
             } else {
                 format!("sqlite://{}?mode=rwc", config.path)
             };
-            if settings.replace((url, config.token, config.url)).is_some() {
-                return Err(crate::Error::custom(
-                    50001,
-                    "configure exactly one enabled ORM driver",
-                ));
-            }
+            return Ok((url, config.token, config.url));
         }
 
         #[cfg(feature = "orm-postgres")]
-        if table.contains_key("orm-postgres") {
+        {
+            if table.contains_key("orm-sqlite") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the PostgreSQL ORM; remove [orm-sqlite]",
+                ));
+            }
+            if table.contains_key("orm-mysql") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the PostgreSQL ORM; remove [orm-mysql]",
+                ));
+            }
+            if !table.contains_key("orm-postgres") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "configure the compile-time PostgreSQL database in [orm-postgres]",
+                ));
+            }
             let config: PostgresOrmSettings = crate::state::extract(table, "orm-postgres")?;
             let url = format!(
                 "postgres://{}:{}@{}:{}/{}",
@@ -116,23 +165,48 @@ impl Orm {
                 config.port,
                 Self::encode_component(&config.name)
             );
-            if settings.replace((url, config.token, config.url)).is_some() {
-                return Err(crate::Error::custom(
-                    50001,
-                    "configure exactly one enabled ORM driver",
-                ));
-            }
+            return Ok((url, config.token, config.url));
         }
 
-        settings.ok_or_else(|| {
-            crate::Error::custom(
-                50001,
-                "configure an enabled [orm-sqlite] or [orm-postgres] section",
-            )
-        })
+        #[cfg(feature = "orm-mysql")]
+        {
+            if table.contains_key("orm-sqlite") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the MySQL ORM; remove [orm-sqlite]",
+                ));
+            }
+            if table.contains_key("orm-postgres") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the MySQL ORM; remove [orm-postgres]",
+                ));
+            }
+            if !table.contains_key("orm-mysql") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "configure the compile-time MySQL database in [orm-mysql]",
+                ));
+            }
+            let config: MysqlOrmSettings = crate::state::extract(table, "orm-mysql")?;
+            let url = format!(
+                "mysql://{}:{}@{}:{}/{}",
+                Self::encode_component(&config.user),
+                Self::encode_component(&config.pass),
+                config.host,
+                config.port,
+                Self::encode_component(&config.name)
+            );
+            return Ok((url, config.token, config.url));
+        }
+        #[allow(unreachable_code)]
+        Err(crate::Error::custom(
+            50001,
+            "no ORM database feature is enabled",
+        ))
     }
 
-    #[cfg(feature = "orm-postgres")]
+    #[cfg(any(feature = "orm-postgres", feature = "orm-mysql"))]
     fn encode_component(value: &str) -> String {
         let mut output = String::with_capacity(value.len());
         for byte in value.bytes() {
@@ -210,7 +284,7 @@ impl Orm {
         self.inner.model_metadata()
     }
 
-    pub fn inner(&self) -> &afastorm::Orm {
+    pub fn inner(&self) -> &afastorm::Orm<Database> {
         &self.inner
     }
 
@@ -244,7 +318,7 @@ impl Orm {
 }
 
 impl Deref for Orm {
-    type Target = afastorm::Orm;
+    type Target = afastorm::Orm<Database>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
