@@ -45,6 +45,7 @@ fn default_tls_port() -> u16 {
 ///
 /// 从 config.toml 的 `[tls]` 节反序列化。
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct TlsConfig {
     /// HTTPS 监听端口（默认 443）
     #[serde(default = "default_tls_port")]
@@ -53,6 +54,16 @@ pub struct TlsConfig {
     pub cert_path: String,
     /// PEM 私钥文件路径
     pub key_path: String,
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self {
+            port: default_tls_port(),
+            cert_path: String::new(),
+            key_path: String::new(),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -92,7 +103,65 @@ impl Tls {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let config: TlsConfig = crate::state::extract(table, "tls")?;
+        let map = table
+            .get("tls")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let config = TlsConfig {
+            port: match (map.get("port"), std::env::var("TLS_PORT")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid TLS_PORT: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| crate::Error::custom(50001, "[tls].port must be an integer"))?
+                    .try_into()
+                    .map_err(|_| crate::Error::custom(50001, "[tls].port is out of range"))?,
+                (None, Err(std::env::VarError::NotPresent)) => default_tls_port(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(50001, "TLS_PORT is not valid UTF-8"));
+                }
+            },
+            cert_path: match (map.get("cert_path"), std::env::var("TLS_CERT_PATH")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[tls].cert_path must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [tls].cert_path or TLS_CERT_PATH",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TLS_CERT_PATH is not valid UTF-8",
+                    ));
+                }
+            },
+            key_path: match (map.get("key_path"), std::env::var("TLS_KEY_PATH")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[tls].key_path must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [tls].key_path or TLS_KEY_PATH",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TLS_KEY_PATH is not valid UTF-8",
+                    ));
+                }
+            },
+        };
         Ok(Self::new(config))
     }
 

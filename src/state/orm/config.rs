@@ -5,7 +5,6 @@ use std::sync::Arc;
 #[cfg(feature = "orm-admin")]
 use super::admin::{AdminModelRegistry, AdminTokenGenerator, AdminTokenVerifier};
 use afastorm::{ModelInfo, ModelRegistry};
-use serde::Deserialize;
 
 #[cfg(feature = "orm-sqlite")]
 pub(crate) type Database = afastorm::sqlx::Sqlite;
@@ -13,38 +12,6 @@ pub(crate) type Database = afastorm::sqlx::Sqlite;
 pub(crate) type Database = afastorm::sqlx::Postgres;
 #[cfg(feature = "orm-mysql")]
 pub(crate) type Database = afastorm::sqlx::MySql;
-
-#[cfg(feature = "orm-sqlite")]
-#[derive(Deserialize)]
-struct SqliteOrmSettings {
-    path: String,
-    token: Option<String>,
-    url: Option<String>,
-}
-
-#[cfg(feature = "orm-postgres")]
-#[derive(Deserialize)]
-struct PostgresOrmSettings {
-    host: String,
-    port: u16,
-    user: String,
-    pass: String,
-    name: String,
-    token: Option<String>,
-    url: Option<String>,
-}
-
-#[cfg(feature = "orm-mysql")]
-#[derive(Deserialize)]
-struct MysqlOrmSettings {
-    host: String,
-    port: u16,
-    user: String,
-    pass: String,
-    name: String,
-    token: Option<String>,
-    url: Option<String>,
-}
 
 #[derive(Clone)]
 pub struct Orm {
@@ -71,14 +38,431 @@ pub struct Orm {
 
 impl Orm {
     pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let (database_url, token, admin_url) = Self::database_settings(table)?;
+        #[cfg(feature = "orm-sqlite")]
+        let (database_url, database_token, database_admin_url) = {
+            if table.contains_key("orm-postgres") || table.contains_key("orm-mysql") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the SQLite ORM; remove other ORM sections",
+                ));
+            }
+            let map = table
+                .get("orm-sqlite")
+                .and_then(toml::Value::as_table)
+                .cloned()
+                .unwrap_or_default();
+            let path = match (map.get("path"), std::env::var("ORM_SQLITE_PATH")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-sqlite].path must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_SQLITE_PATH is not valid UTF-8",
+                    ));
+                }
+            };
+            let token = match (map.get("token"), std::env::var("ORM_SQLITE_TOKEN")) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[orm-sqlite].token must be a string")
+                        })?
+                        .to_owned(),
+                ),
+                (None, Err(std::env::VarError::NotPresent)) => None,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_SQLITE_TOKEN is not valid UTF-8",
+                    ));
+                }
+            };
+            let admin_url = match (map.get("url"), std::env::var("ORM_SQLITE_URL")) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[orm-sqlite].url must be a string")
+                        })?
+                        .to_owned(),
+                ),
+                (None, Err(std::env::VarError::NotPresent)) => None,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_SQLITE_URL is not valid UTF-8",
+                    ));
+                }
+            };
+            let url = if path.is_empty() || path == ":memory:" {
+                "sqlite::memory:".to_owned()
+            } else if path.starts_with("sqlite:") {
+                path
+            } else {
+                format!("sqlite://{}?mode=rwc", path)
+            };
+            (url, token, admin_url)
+        };
+        #[cfg(feature = "orm-postgres")]
+        let (database_url, database_token, database_admin_url) = {
+            if table.contains_key("orm-sqlite") || table.contains_key("orm-mysql") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the PostgreSQL ORM; remove other ORM sections",
+                ));
+            }
+            let map = table
+                .get("orm-postgres")
+                .and_then(toml::Value::as_table)
+                .cloned()
+                .unwrap_or_default();
+            let host = match (map.get("host"), std::env::var("ORM_POSTGRES_HOST")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-postgres].host must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [orm-postgres].host or ORM_POSTGRES_HOST",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_POSTGRES_HOST is not valid UTF-8",
+                    ));
+                }
+            };
+            let port = match (map.get("port"), std::env::var("ORM_POSTGRES_PORT")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid ORM_POSTGRES_PORT: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-postgres].port must be an integer")
+                    })?
+                    .try_into()
+                    .map_err(|_| {
+                        crate::Error::custom(50001, "[orm-postgres].port is out of range")
+                    })?,
+                (None, Err(std::env::VarError::NotPresent)) => 5432,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_POSTGRES_PORT is not valid UTF-8",
+                    ));
+                }
+            };
+            let user = match (map.get("user"), std::env::var("ORM_POSTGRES_USER")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-postgres].user must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [orm-postgres].user or ORM_POSTGRES_USER",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_POSTGRES_USER is not valid UTF-8",
+                    ));
+                }
+            };
+            let pass = match (map.get("pass"), std::env::var("ORM_POSTGRES_PASS")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-postgres].pass must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_POSTGRES_PASS is not valid UTF-8",
+                    ));
+                }
+            };
+            let name = match (map.get("name"), std::env::var("ORM_POSTGRES_NAME")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-postgres].name must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [orm-postgres].name or ORM_POSTGRES_NAME",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_POSTGRES_NAME is not valid UTF-8",
+                    ));
+                }
+            };
+            let token = match (map.get("token"), std::env::var("ORM_POSTGRES_TOKEN")) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[orm-postgres].token must be a string")
+                        })?
+                        .to_owned(),
+                ),
+                (None, Err(std::env::VarError::NotPresent)) => None,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_POSTGRES_TOKEN is not valid UTF-8",
+                    ));
+                }
+            };
+            let admin_url = match (map.get("url"), std::env::var("ORM_POSTGRES_URL")) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[orm-postgres].url must be a string")
+                        })?
+                        .to_owned(),
+                ),
+                (None, Err(std::env::VarError::NotPresent)) => None,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_POSTGRES_URL is not valid UTF-8",
+                    ));
+                }
+            };
+            (
+                format!(
+                    "postgres://{}:{}@{}:{}/{}",
+                    Self::encode_component(&user),
+                    Self::encode_component(&pass),
+                    host,
+                    port,
+                    Self::encode_component(&name)
+                ),
+                token,
+                admin_url,
+            )
+        };
+        #[cfg(feature = "orm-mysql")]
+        let (database_url, database_token, database_admin_url) = {
+            if table.contains_key("orm-sqlite") || table.contains_key("orm-postgres") {
+                return Err(crate::Error::custom(
+                    50001,
+                    "this application was compiled with the MySQL ORM; remove other ORM sections",
+                ));
+            }
+            let map = table
+                .get("orm-mysql")
+                .and_then(toml::Value::as_table)
+                .cloned()
+                .unwrap_or_default();
+            let host = match (map.get("host"), std::env::var("ORM_MYSQL_HOST")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-mysql].host must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [orm-mysql].host or ORM_MYSQL_HOST",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_MYSQL_HOST is not valid UTF-8",
+                    ));
+                }
+            };
+            let port = match (map.get("port"), std::env::var("ORM_MYSQL_PORT")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid ORM_MYSQL_PORT: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-mysql].port must be an integer")
+                    })?
+                    .try_into()
+                    .map_err(|_| crate::Error::custom(50001, "[orm-mysql].port is out of range"))?,
+                (None, Err(std::env::VarError::NotPresent)) => 3306,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_MYSQL_PORT is not valid UTF-8",
+                    ));
+                }
+            };
+            let user = match (map.get("user"), std::env::var("ORM_MYSQL_USER")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-mysql].user must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [orm-mysql].user or ORM_MYSQL_USER",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_MYSQL_USER is not valid UTF-8",
+                    ));
+                }
+            };
+            let pass = match (map.get("pass"), std::env::var("ORM_MYSQL_PASS")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-mysql].pass must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_MYSQL_PASS is not valid UTF-8",
+                    ));
+                }
+            };
+            let name = match (map.get("name"), std::env::var("ORM_MYSQL_NAME")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[orm-mysql].name must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [orm-mysql].name or ORM_MYSQL_NAME",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_MYSQL_NAME is not valid UTF-8",
+                    ));
+                }
+            };
+            let token = match (map.get("token"), std::env::var("ORM_MYSQL_TOKEN")) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[orm-mysql].token must be a string")
+                        })?
+                        .to_owned(),
+                ),
+                (None, Err(std::env::VarError::NotPresent)) => None,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_MYSQL_TOKEN is not valid UTF-8",
+                    ));
+                }
+            };
+            let admin_url = match (map.get("url"), std::env::var("ORM_MYSQL_URL")) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[orm-mysql].url must be a string")
+                        })?
+                        .to_owned(),
+                ),
+                (None, Err(std::env::VarError::NotPresent)) => None,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ORM_MYSQL_URL is not valid UTF-8",
+                    ));
+                }
+            };
+            (
+                format!(
+                    "mysql://{}:{}@{}:{}/{}",
+                    Self::encode_component(&user),
+                    Self::encode_component(&pass),
+                    host,
+                    port,
+                    Self::encode_component(&name)
+                ),
+                token,
+                admin_url,
+            )
+        };
+        #[cfg(feature = "orm-admin")]
+        let token = match (database_token, std::env::var("ORM_ADMIN_TOKEN")) {
+            (_, Ok(value)) => (!value.is_empty()).then_some(value),
+            (Some(value), Err(std::env::VarError::NotPresent)) => Some(value),
+            (None, Err(std::env::VarError::NotPresent)) => None,
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ORM_ADMIN_TOKEN is not valid UTF-8",
+                ));
+            }
+        };
+        #[cfg(feature = "orm-admin")]
+        let admin_url = match (database_admin_url, std::env::var("ORM_ADMIN_URL")) {
+            (_, Ok(value)) => (!value.is_empty()).then_some(value),
+            (Some(value), Err(std::env::VarError::NotPresent)) => Some(value),
+            (None, Err(std::env::VarError::NotPresent)) => None,
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ORM_ADMIN_URL is not valid UTF-8",
+                ));
+            }
+        };
         #[cfg(not(feature = "orm-admin"))]
-        let _ = (&token, &admin_url);
-        let inner = afastorm::Orm::<Database>::connect(database_url)
-            .await
-            .map_err(|error| {
-                crate::Error::custom(50901, format!("ORM initialization failed: {error}"))
-            })?;
+        let _ = (&database_token, &database_admin_url);
+        let inner = afastorm::Orm::<Database>::connect_lazy(database_url).map_err(|error| {
+            crate::Error::custom(50901, format!("ORM initialization failed: {error}"))
+        })?;
         Ok(Self {
             inner,
             #[cfg(feature = "orm-admin")]
@@ -100,110 +484,6 @@ impl Orm {
             #[cfg(feature = "orm-admin")]
             admin_token_verifier: None,
         })
-    }
-
-    fn database_settings(
-        table: &toml::Table,
-    ) -> crate::Result<(String, Option<String>, Option<String>)> {
-        #[cfg(feature = "orm-sqlite")]
-        {
-            if table.contains_key("orm-postgres") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "this application was compiled with the SQLite ORM; remove [orm-postgres]",
-                ));
-            }
-            if table.contains_key("orm-mysql") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "this application was compiled with the SQLite ORM; remove [orm-mysql]",
-                ));
-            }
-            if !table.contains_key("orm-sqlite") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "configure the compile-time SQLite database in [orm-sqlite]",
-                ));
-            }
-            let config: SqliteOrmSettings = crate::state::extract(table, "orm-sqlite")?;
-            let url = if config.path == ":memory:" {
-                "sqlite::memory:".to_owned()
-            } else if config.path.starts_with("sqlite:") {
-                config.path
-            } else {
-                format!("sqlite://{}?mode=rwc", config.path)
-            };
-            return Ok((url, config.token, config.url));
-        }
-
-        #[cfg(feature = "orm-postgres")]
-        {
-            if table.contains_key("orm-sqlite") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "this application was compiled with the PostgreSQL ORM; remove [orm-sqlite]",
-                ));
-            }
-            if table.contains_key("orm-mysql") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "this application was compiled with the PostgreSQL ORM; remove [orm-mysql]",
-                ));
-            }
-            if !table.contains_key("orm-postgres") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "configure the compile-time PostgreSQL database in [orm-postgres]",
-                ));
-            }
-            let config: PostgresOrmSettings = crate::state::extract(table, "orm-postgres")?;
-            let url = format!(
-                "postgres://{}:{}@{}:{}/{}",
-                Self::encode_component(&config.user),
-                Self::encode_component(&config.pass),
-                config.host,
-                config.port,
-                Self::encode_component(&config.name)
-            );
-            return Ok((url, config.token, config.url));
-        }
-
-        #[cfg(feature = "orm-mysql")]
-        {
-            if table.contains_key("orm-sqlite") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "this application was compiled with the MySQL ORM; remove [orm-sqlite]",
-                ));
-            }
-            if table.contains_key("orm-postgres") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "this application was compiled with the MySQL ORM; remove [orm-postgres]",
-                ));
-            }
-            if !table.contains_key("orm-mysql") {
-                return Err(crate::Error::custom(
-                    50001,
-                    "configure the compile-time MySQL database in [orm-mysql]",
-                ));
-            }
-            let config: MysqlOrmSettings = crate::state::extract(table, "orm-mysql")?;
-            let url = format!(
-                "mysql://{}:{}@{}:{}/{}",
-                Self::encode_component(&config.user),
-                Self::encode_component(&config.pass),
-                config.host,
-                config.port,
-                Self::encode_component(&config.name)
-            );
-            return Ok((url, config.token, config.url));
-        }
-        #[allow(unreachable_code)]
-        Err(crate::Error::custom(
-            50001,
-            "no ORM database feature is enabled",
-        ))
     }
 
     #[cfg(any(feature = "orm-postgres", feature = "orm-mysql"))]

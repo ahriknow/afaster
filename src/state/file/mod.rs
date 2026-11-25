@@ -61,6 +61,7 @@ fn default_url_prefix() -> String {
 
 /// 文件服务配置
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct FileConfig {
     #[serde(default = "default_root")]
     pub root: String,
@@ -99,11 +100,78 @@ pub struct FileService {
 impl FileService {
     /// 从配置表的 `[file]` 段创建（缺段走 `FileConfig::default()`），供 `AppState::new` 使用
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let config: FileConfig = match table.get("file") {
-            Some(v) => v.clone().try_into().map_err(|e| {
-                crate::Error::custom(50001, format!("Invalid [file] config: {}", e))
-            })?,
-            None => FileConfig::default(),
+        let map = table
+            .get("file")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let config = FileConfig {
+            root: match (map.get("root"), std::env::var("FILE_ROOT")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[file].root must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_root(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(50001, "FILE_ROOT is not valid UTF-8"));
+                }
+            },
+            max_size: match (map.get("max_size"), std::env::var("FILE_MAX_SIZE")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid FILE_MAX_SIZE: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[file].max_size must be an integer")
+                    })?
+                    .try_into()
+                    .map_err(|_| crate::Error::custom(50001, "[file].max_size is out of range"))?,
+                (None, Err(std::env::VarError::NotPresent)) => default_max_size(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "FILE_MAX_SIZE is not valid UTF-8",
+                    ));
+                }
+            },
+            allowed: match (map.get("allowed"), std::env::var("FILE_ALLOWED")) {
+                (_, Ok(value)) => value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.clone().try_into().map_err(|error| {
+                        crate::Error::custom(50001, format!("[file].allowed: {error}"))
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => Vec::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "FILE_ALLOWED is not valid UTF-8",
+                    ));
+                }
+            },
+            url_prefix: match (map.get("url_prefix"), std::env::var("FILE_URL_PREFIX")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[file].url_prefix must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_url_prefix(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "FILE_URL_PREFIX is not valid UTF-8",
+                    ));
+                }
+            },
         };
         Self::new(&config)
     }

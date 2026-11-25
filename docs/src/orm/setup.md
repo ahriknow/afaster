@@ -8,7 +8,7 @@ AFaster 的 ORM 驱动通过 Feature 选择。应用只应在配置中使用已�
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.11", default-features = false, features = [
+afaster = { version = "0.0.12", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-migrate",
@@ -73,7 +73,7 @@ url = "/admin"
 启用 MySQL 时，在 AFaster 和 `afastorm` 两侧都启用对应 feature：
 
 ```toml
-afaster = { version = "0.0.11", features = ["orm-mysql"] }
+afaster = { version = "0.0.12", features = ["orm-mysql"] }
 afastorm = { version = "0.0.2", features = ["derive", "mysql", "migrate"] }
 ```
 

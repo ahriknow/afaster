@@ -7,6 +7,7 @@ use afastdata::AFastSerialize;
 
 /// TCP 存储配置
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(default)]
 pub struct TcpTraceStoreConfig {
     /// 远程服务地址，如 "127.0.0.1:9090"
     pub addr: String,
@@ -16,6 +17,16 @@ pub struct TcpTraceStoreConfig {
     /// 重连间隔（秒），默认 3
     #[serde(default = "default_reconnect_interval")]
     pub reconnect_interval: u64,
+}
+
+impl Default for TcpTraceStoreConfig {
+    fn default() -> Self {
+        Self {
+            addr: String::new(),
+            connect_timeout: default_connect_timeout(),
+            reconnect_interval: default_reconnect_interval(),
+        }
+    }
 }
 
 fn default_connect_timeout() -> u64 {

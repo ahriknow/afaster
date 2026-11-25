@@ -28,6 +28,7 @@ const TENCENT_SMS_ENDPOINT: &str = "https://sms.tencentcloudapi.com";
 /// API: https://cloud.tencent.com/document/api/382/55981
 /// API Version: 2021-01-11
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct SmsTencent {
     pub secret_id: String,
     pub secret_key: String,
@@ -379,8 +380,143 @@ impl AFasterSmsTencentExt for crate::AFaster {
 
 impl SmsTencent {
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "sms_tencent")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("sms_tencent")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let secret_id = match (map.get("secret_id"), std::env::var("SMS_TENCENT_SECRET_ID")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_tencent].secret_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [sms_tencent].secret_id or SMS_TENCENT_SECRET_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_TENCENT_SECRET_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let secret_key = match (
+            map.get("secret_key"),
+            std::env::var("SMS_TENCENT_SECRET_KEY"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_tencent].secret_key must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [sms_tencent].secret_key or SMS_TENCENT_SECRET_KEY",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_TENCENT_SECRET_KEY is not valid UTF-8",
+                ));
+            }
+        };
+        let sdk_app_id = match (
+            map.get("sdk_app_id"),
+            std::env::var("SMS_TENCENT_SDK_APP_ID"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_tencent].sdk_app_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [sms_tencent].sdk_app_id or SMS_TENCENT_SDK_APP_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_TENCENT_SDK_APP_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let sign_name = match (map.get("sign_name"), std::env::var("SMS_TENCENT_SIGN_NAME")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_tencent].sign_name must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_sign_name(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_TENCENT_SIGN_NAME is not valid UTF-8",
+                ));
+            }
+        };
+        let template_id = match (
+            map.get("template_id"),
+            std::env::var("SMS_TENCENT_TEMPLATE_ID"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_tencent].template_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_TENCENT_TEMPLATE_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let callback_path = match (
+            map.get("callback_path"),
+            std::env::var("SMS_TENCENT_CALLBACK_PATH"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_tencent].callback_path must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_callback_path(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_TENCENT_CALLBACK_PATH is not valid UTF-8",
+                ));
+            }
+        };
+        Ok(Self {
+            secret_id,
+            secret_key,
+            sdk_app_id,
+            sign_name,
+            template_id,
+            client: super::default_http_client(),
+            sms_report_callback: None,
+            callback_path,
+        })
     }
 }

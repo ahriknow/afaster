@@ -36,6 +36,48 @@ pub fn mini_parse() -> crate::Error {
     crate::Error::custom(50204, "WeChat mini login response deserialize failed")
 }
 
+/// 获取小程序 access_token 的 URL 无效 (50205)
+#[inline]
+pub fn mini_phone_token_url() -> crate::Error {
+    crate::Error::custom(50205, "WeChat mini access token URL build failed")
+}
+
+/// 获取小程序 access_token 请求失败 (50206)
+#[inline]
+pub fn mini_phone_token_request() -> crate::Error {
+    crate::Error::custom(50206, "WeChat mini access token request failed")
+}
+
+/// 解析小程序 access_token 响应失败 (50207)
+#[inline]
+pub fn mini_phone_token_response() -> crate::Error {
+    crate::Error::custom(50207, "WeChat mini access token response parse failed")
+}
+
+/// 手机号授权 code 为空 (40202)
+#[inline]
+pub fn mini_phone_code_missing() -> crate::Error {
+    crate::Error::custom(40202, "Missing WeChat mini phone number code")
+}
+
+/// 获取手机号请求失败 (50208)
+#[inline]
+pub fn mini_phone_request() -> crate::Error {
+    crate::Error::custom(50208, "WeChat mini phone number request failed")
+}
+
+/// 解析获取手机号响应失败 (50209)
+#[inline]
+pub fn mini_phone_response() -> crate::Error {
+    crate::Error::custom(50209, "WeChat mini phone number response parse failed")
+}
+
+/// 手机号响应缺少 phone_info (50210)
+#[inline]
+pub fn mini_phone_parse() -> crate::Error {
+    crate::Error::custom(50210, "WeChat mini phone number response has no phone_info")
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  微信 APP 登录错误 (模块 03)
 //  用户错误: 40301~40399

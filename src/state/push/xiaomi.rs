@@ -7,6 +7,7 @@ use super::{Notification, PushTarget};
 // ═══════════════════════════════════════════════════════════════
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct XiaomiPush {
     /// 应用包名
     pub package_name: String,
@@ -16,6 +17,17 @@ pub struct XiaomiPush {
     pub base_url: String,
     #[serde(skip)]
     pub client: reqwest::Client,
+}
+
+impl Default for XiaomiPush {
+    fn default() -> Self {
+        Self {
+            package_name: String::new(),
+            app_secret: String::new(),
+            base_url: default_base_url(),
+            client: reqwest::Client::new(),
+        }
+    }
 }
 
 fn default_base_url() -> String {
@@ -53,6 +65,88 @@ pub struct XiaomiPushOptions {
     pub flow_control: Option<i32>,
     /// 消息去重 key
     pub jobkey: Option<String>,
+}
+
+impl XiaomiPush {
+    pub(crate) fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let map = table
+            .get("push")
+            .and_then(toml::Value::as_table)
+            .and_then(|value| value.get("xiaomi"))
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let package_name = match (
+            map.get("package_name"),
+            std::env::var("PUSH_XIAOMI_PACKAGE_NAME"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[push.xiaomi].package_name must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [push.xiaomi].package_name or PUSH_XIAOMI_PACKAGE_NAME",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "PUSH_XIAOMI_PACKAGE_NAME is not valid UTF-8",
+                ));
+            }
+        };
+        let app_secret = match (
+            map.get("app_secret"),
+            std::env::var("PUSH_XIAOMI_APP_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[push.xiaomi].app_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [push.xiaomi].app_secret or PUSH_XIAOMI_APP_SECRET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "PUSH_XIAOMI_APP_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        let base_url = match (map.get("base_url"), std::env::var("PUSH_XIAOMI_BASE_URL")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[push.xiaomi].base_url must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_base_url(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "PUSH_XIAOMI_BASE_URL is not valid UTF-8",
+                ));
+            }
+        };
+        Ok(Self {
+            package_name,
+            app_secret,
+            base_url,
+            client: super::super::default_http_client(),
+        })
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════

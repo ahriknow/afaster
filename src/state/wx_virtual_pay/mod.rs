@@ -34,6 +34,7 @@ fn default_callback_path() -> String {
 // ═══════════════════════════════════════════════════════════════
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct WxVirtualPay {
     pub offer_id: String,
     pub app_key: String,
@@ -72,6 +73,27 @@ pub struct WxVirtualPay {
     /// session_key 管理器，按 `appid:openid` 存储
     #[serde(skip)]
     pub sessions: WxSessionManager,
+}
+
+impl Default for WxVirtualPay {
+    fn default() -> Self {
+        Self {
+            offer_id: String::new(),
+            app_key: String::new(),
+            env: 0,
+            mini_id: String::new(),
+            mini_secret: String::new(),
+            callback_path: default_callback_path(),
+            verify_token: String::new(),
+            msg_secret: String::new(),
+            goods_deliver_callback: None,
+            coin_pay_callback: None,
+            refund_callback: None,
+            complaint_callback: None,
+            client: reqwest::Client::new(),
+            sessions: WxSessionManager::default(),
+        }
+    }
 }
 
 impl WxVirtualPay {
@@ -609,9 +631,193 @@ impl WxVirtualPay {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "wx_virtual_pay")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("wx_virtual_pay")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let offer_id = match (
+            map.get("offer_id"),
+            std::env::var("WX_VIRTUAL_PAY_OFFER_ID"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_virtual_pay].offer_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [wx_virtual_pay].offer_id or WX_VIRTUAL_PAY_OFFER_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_VIRTUAL_PAY_OFFER_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let app_key = match (map.get("app_key"), std::env::var("WX_VIRTUAL_PAY_APP_KEY")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_virtual_pay].app_key must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [wx_virtual_pay].app_key or WX_VIRTUAL_PAY_APP_KEY",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_VIRTUAL_PAY_APP_KEY is not valid UTF-8",
+                ));
+            }
+        };
+        let env = match (map.get("env"), std::env::var("WX_VIRTUAL_PAY_ENV")) {
+            (_, Ok(value)) => value.parse().map_err(|error| {
+                crate::Error::custom(50001, format!("Invalid WX_VIRTUAL_PAY_ENV: {error}"))
+            })?,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_integer()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_virtual_pay].env must be an integer")
+                })?
+                .try_into()
+                .map_err(|_| crate::Error::custom(50001, "[wx_virtual_pay].env is out of range"))?,
+            (None, Err(std::env::VarError::NotPresent)) => 0,
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_VIRTUAL_PAY_ENV is not valid UTF-8",
+                ));
+            }
+        };
+        let mini_id = match (map.get("mini_id"), std::env::var("WX_VIRTUAL_PAY_MINI_ID")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_virtual_pay].mini_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [wx_virtual_pay].mini_id or WX_VIRTUAL_PAY_MINI_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_VIRTUAL_PAY_MINI_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let mini_secret = match (
+            map.get("mini_secret"),
+            std::env::var("WX_VIRTUAL_PAY_MINI_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_virtual_pay].mini_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [wx_virtual_pay].mini_secret or WX_VIRTUAL_PAY_MINI_SECRET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_VIRTUAL_PAY_MINI_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        let callback_path = match (
+            map.get("callback_path"),
+            std::env::var("WX_VIRTUAL_PAY_CALLBACK_PATH"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_virtual_pay].callback_path must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_callback_path(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_VIRTUAL_PAY_CALLBACK_PATH is not valid UTF-8",
+                ));
+            }
+        };
+        let verify_token = match (
+            map.get("verify_token"),
+            std::env::var("WX_VIRTUAL_PAY_VERIFY_TOKEN"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_virtual_pay].verify_token must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_VIRTUAL_PAY_VERIFY_TOKEN is not valid UTF-8",
+                ));
+            }
+        };
+        let msg_secret = match (
+            map.get("msg_secret"),
+            std::env::var("WX_VIRTUAL_PAY_MSG_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_virtual_pay].msg_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_VIRTUAL_PAY_MSG_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        Ok(Self {
+            offer_id,
+            app_key,
+            env,
+            mini_id,
+            mini_secret,
+            callback_path,
+            verify_token,
+            msg_secret,
+            goods_deliver_callback: None,
+            coin_pay_callback: None,
+            refund_callback: None,
+            complaint_callback: None,
+            client: super::default_http_client(),
+            sessions: WxSessionManager::default(),
+        })
     }
 }
 

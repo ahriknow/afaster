@@ -24,6 +24,7 @@ fn default_db() -> i64 {
 ///
 /// 从 config.toml 的 `[redis]` 或 `[valkey]` 节反序列化。
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct RedisConfig {
     /// 主机地址（可选，默认 127.0.0.1）
     #[serde(default = "default_host")]
@@ -40,6 +41,18 @@ pub struct RedisConfig {
     /// Key 前缀（可选），所有 key 自动添加前缀，用于多租户隔离
     #[serde(default)]
     pub prefix: String,
+}
+
+impl Default for RedisConfig {
+    fn default() -> Self {
+        Self {
+            host: default_host(),
+            port: default_port(),
+            db: default_db(),
+            password: String::new(),
+            prefix: String::new(),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -81,21 +94,6 @@ impl Redis {
 
         let client = redis::Client::open(conn_info).map_err(|e| connect_failed(&e.to_string()))?;
 
-        // 验证连接
-        let mut conn = client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| connect_failed(&e.to_string()))?;
-
-        // 选择数据库（ConnectionInfo 已设置 db，这里再确认一次）
-        if config.db != 0 {
-            redis::cmd("SELECT")
-                .arg(config.db)
-                .query_async::<()>(&mut conn)
-                .await
-                .map_err(|e| connect_failed(&e.to_string()))?;
-        }
-
         Ok(Self {
             client,
             db: config.db,
@@ -104,7 +102,80 @@ impl Redis {
     }
 
     pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let config: RedisConfig = crate::state::extract(table, "redis")?;
+        let map = table
+            .get("redis")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let config = RedisConfig {
+            host: match (map.get("host"), std::env::var("REDIS_HOST")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[redis].host must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_host(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(50001, "REDIS_HOST is not valid UTF-8"));
+                }
+            },
+            port: match (map.get("port"), std::env::var("REDIS_PORT")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid REDIS_PORT: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| crate::Error::custom(50001, "[redis].port must be an integer"))?
+                    .try_into()
+                    .map_err(|_| crate::Error::custom(50001, "[redis].port is out of range"))?,
+                (None, Err(std::env::VarError::NotPresent)) => default_port(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(50001, "REDIS_PORT is not valid UTF-8"));
+                }
+            },
+            db: match (map.get("db"), std::env::var("REDIS_DB")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid REDIS_DB: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| crate::Error::custom(50001, "[redis].db must be an integer"))?,
+                (None, Err(std::env::VarError::NotPresent)) => default_db(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(50001, "REDIS_DB is not valid UTF-8"));
+                }
+            },
+            password: match (map.get("password"), std::env::var("REDIS_PASSWORD")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[redis].password must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "REDIS_PASSWORD is not valid UTF-8",
+                    ));
+                }
+            },
+            prefix: match (map.get("prefix"), std::env::var("REDIS_PREFIX")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[redis].prefix must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "REDIS_PREFIX is not valid UTF-8",
+                    ));
+                }
+            },
+        };
         Self::connect(&config).await
     }
 

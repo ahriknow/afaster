@@ -461,10 +461,6 @@ impl AFaster {
         // 校验链路追踪
         #[cfg(feature = "trace")]
         let tracing_svc_ref = state.tracing.clone();
-        #[cfg(feature = "trace")]
-        if state.tracing.store().is_empty() {
-            panic!("链路追踪未配置存储后端，请设置 [tracing].db_path 或调用 set_trace_store()");
-        }
 
         let mut app = AFast::new().state(state.clone()).service(health_svc);
 
@@ -599,26 +595,30 @@ impl AFaster {
         #[cfg(all(feature = "afast-tls", feature = "acme"))]
         if acme_certs.is_none() {
             let tls_config = &state.tls.config;
-            let tls_addr = format!("{}:{}", state.backend.host, tls_config.port);
-            app = app.https(
-                &tls_addr,
-                &tls_config.cert_path,
-                &tls_config.key_path,
-                tls_reload_rx.take(),
-            );
+            if !tls_config.cert_path.is_empty() && !tls_config.key_path.is_empty() {
+                let tls_addr = format!("{}:{}", state.backend.host, tls_config.port);
+                app = app.https(
+                    &tls_addr,
+                    &tls_config.cert_path,
+                    &tls_config.key_path,
+                    tls_reload_rx.take(),
+                );
+            }
         }
 
         // 手动 TLS（仅在 ACME 未启用时使用）
         #[cfg(all(feature = "afast-tls", not(feature = "acme")))]
         {
             let tls_config = &state.tls.config;
-            let tls_addr = format!("{}:{}", state.backend.host, tls_config.port);
-            app = app.https(
-                &tls_addr,
-                &tls_config.cert_path,
-                &tls_config.key_path,
-                tls_reload_rx.take(),
-            );
+            if !tls_config.cert_path.is_empty() && !tls_config.key_path.is_empty() {
+                let tls_addr = format!("{}:{}", state.backend.host, tls_config.port);
+                app = app.https(
+                    &tls_addr,
+                    &tls_config.cert_path,
+                    &tls_config.key_path,
+                    tls_reload_rx.take(),
+                );
+            }
         }
 
         #[cfg(feature = "afast-ws")]

@@ -8,11 +8,14 @@ mod callback;
 pub use callback::{WxWebLoginCallbackFn, callback as wx_web_login_callback_handler};
 
 use serde::Deserialize;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[cfg(feature = "wx-login-web")]
 use crate::state::callbacks::IntoCallback;
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct WxLogin {
     #[cfg(feature = "wx-login-mini")]
     pub mini_id: String,
@@ -38,9 +41,51 @@ pub struct WxLogin {
     ))]
     #[serde(skip)]
     pub client: reqwest::Client,
+    #[cfg(feature = "wx-login-mini")]
+    #[serde(skip)]
+    mini_access_token: Arc<Mutex<Option<CachedMiniAccessToken>>>,
     #[cfg(feature = "wx-login-web")]
     #[serde(skip)]
     pub(crate) web_login_callback: Option<WxWebLoginCallbackFn>,
+}
+
+impl Default for WxLogin {
+    fn default() -> Self {
+        Self {
+            #[cfg(feature = "wx-login-mini")]
+            mini_id: String::new(),
+            #[cfg(feature = "wx-login-mini")]
+            mini_secret: String::new(),
+            #[cfg(feature = "wx-login-app")]
+            app_id: String::new(),
+            #[cfg(feature = "wx-login-app")]
+            app_secret: String::new(),
+            #[cfg(feature = "wx-login-web")]
+            web_id: String::new(),
+            #[cfg(feature = "wx-login-web")]
+            web_secret: String::new(),
+            #[cfg(feature = "wx-login-web")]
+            redirect_base: String::new(),
+            #[cfg(feature = "wx-login-web")]
+            callback_path: default_web_callback_path(),
+            #[cfg(any(
+                feature = "wx-login-mini",
+                feature = "wx-login-app",
+                feature = "wx-login-web"
+            ))]
+            client: super::default_http_client(),
+            #[cfg(feature = "wx-login-mini")]
+            mini_access_token: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "wx-login-web")]
+            web_login_callback: None,
+        }
+    }
+}
+
+#[cfg(feature = "wx-login-mini")]
+struct CachedMiniAccessToken {
+    value: String,
+    expires_at: std::time::Instant,
 }
 
 #[cfg(feature = "wx-login-web")]
@@ -59,6 +104,36 @@ pub struct MiniLoginResponse {
     pub errmsg: Option<String>,
 }
 
+#[cfg(feature = "wx-login-mini")]
+#[derive(Debug, Deserialize)]
+pub struct WxMiniPhoneNumber {
+    #[serde(rename = "phoneNumber")]
+    pub phone_number: String,
+    #[serde(rename = "purePhoneNumber")]
+    pub pure_phone_number: String,
+    #[serde(rename = "countryCode")]
+    pub country_code: String,
+}
+
+#[cfg(feature = "wx-login-mini")]
+#[derive(Debug, Deserialize)]
+struct WxMiniPhoneNumberResponse {
+    #[serde(default)]
+    errcode: Option<i32>,
+    #[serde(default)]
+    errmsg: Option<String>,
+    phone_info: Option<WxMiniPhoneNumber>,
+}
+
+#[cfg(feature = "wx-login-mini")]
+#[derive(Debug, Deserialize)]
+struct WxMiniAccessTokenResponse {
+    access_token: Option<String>,
+    expires_in: Option<u64>,
+    errcode: Option<i32>,
+    errmsg: Option<String>,
+}
+
 // 微信APP登录响应
 #[cfg(feature = "wx-login-app")]
 #[derive(Debug, serde::Deserialize)]
@@ -74,6 +149,55 @@ pub struct AppLoginResponse {
 }
 
 impl WxLogin {
+    #[cfg(feature = "wx-login-mini")]
+    async fn mini_access_token(&self) -> crate::Result<String> {
+        let mut cache = self.mini_access_token.lock().await;
+        if let Some(token) = cache.as_ref()
+            && token.expires_at > std::time::Instant::now()
+        {
+            return Ok(token.value.clone());
+        }
+
+        let mut url = reqwest::Url::parse("https://api.weixin.qq.com/cgi-bin/token")
+            .map_err(|_| mini_phone_token_url())?;
+        url.query_pairs_mut()
+            .append_pair("grant_type", "client_credential")
+            .append_pair("appid", &self.mini_id)
+            .append_pair("secret", &self.mini_secret);
+
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| mini_phone_token_request())?
+            .json::<WxMiniAccessTokenResponse>()
+            .await
+            .map_err(|_| mini_phone_token_response())?;
+        if response.errcode.unwrap_or_default() != 0 {
+            return Err(mini_api(
+                response
+                    .errmsg
+                    .as_deref()
+                    .unwrap_or("WeChat access token request failed"),
+            ));
+        }
+        let value = response
+            .access_token
+            .ok_or_else(mini_phone_token_response)?;
+        let expires_in = response.expires_in.unwrap_or_default();
+        if value.is_empty() || expires_in == 0 {
+            return Err(mini_phone_token_response());
+        }
+
+        *cache = Some(CachedMiniAccessToken {
+            value: value.clone(),
+            expires_at: std::time::Instant::now()
+                + std::time::Duration::from_secs(expires_in.saturating_sub(120).max(1)),
+        });
+        Ok(value)
+    }
+
     #[cfg(feature = "wx-login-mini")]
     /// 微信小程序登录
     ///
@@ -134,6 +258,37 @@ impl WxLogin {
             mini_parse()
         })?;
         Ok(login_response)
+    }
+
+    #[cfg(feature = "wx-login-mini")]
+    /// 用小程序手机号授权 code 换取手机号信息。
+    ///
+    /// access_token 在当前 WxLogin 实例内缓存，并在过期前刷新。
+    pub async fn get_user_phone_number(&self, code: &str) -> crate::Result<WxMiniPhoneNumber> {
+        if code.trim().is_empty() {
+            return Err(mini_phone_code_missing());
+        }
+        let access_token = self.mini_access_token().await?;
+        let response = self
+            .client
+            .post("https://api.weixin.qq.com/wxa/business/getuserphonenumber")
+            .query(&[("access_token", access_token)])
+            .json(&serde_json::json!({ "code": code }))
+            .send()
+            .await
+            .map_err(|_| mini_phone_request())?
+            .json::<WxMiniPhoneNumberResponse>()
+            .await
+            .map_err(|_| mini_phone_response())?;
+        if response.errcode.unwrap_or_default() != 0 {
+            return Err(mini_api(
+                response
+                    .errmsg
+                    .as_deref()
+                    .unwrap_or("WeChat phone number request failed"),
+            ));
+        }
+        response.phone_info.ok_or_else(mini_phone_parse)
     }
 
     #[cfg(feature = "wx-login-app")]
@@ -606,8 +761,199 @@ impl AFasterWxLoginExt for crate::AFaster {
 
 impl WxLogin {
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "wxlogin")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("wxlogin")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        Ok(Self {
+            #[cfg(feature = "wx-login-mini")]
+            mini_id: match (map.get("mini_id"), std::env::var("WXLOGIN_MINI_ID")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wxlogin].mini_id must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [wxlogin].mini_id or WXLOGIN_MINI_ID",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WXLOGIN_MINI_ID is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "wx-login-mini")]
+            mini_secret: match (map.get("mini_secret"), std::env::var("WXLOGIN_MINI_SECRET")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wxlogin].mini_secret must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [wxlogin].mini_secret or WXLOGIN_MINI_SECRET",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WXLOGIN_MINI_SECRET is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "wx-login-app")]
+            app_id: match (map.get("app_id"), std::env::var("WXLOGIN_APP_ID")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wxlogin].app_id must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [wxlogin].app_id or WXLOGIN_APP_ID",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WXLOGIN_APP_ID is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "wx-login-app")]
+            app_secret: match (map.get("app_secret"), std::env::var("WXLOGIN_APP_SECRET")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wxlogin].app_secret must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [wxlogin].app_secret or WXLOGIN_APP_SECRET",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WXLOGIN_APP_SECRET is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "wx-login-web")]
+            web_id: match (map.get("web_id"), std::env::var("WXLOGIN_WEB_ID")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wxlogin].web_id must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [wxlogin].web_id or WXLOGIN_WEB_ID",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WXLOGIN_WEB_ID is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "wx-login-web")]
+            web_secret: match (map.get("web_secret"), std::env::var("WXLOGIN_WEB_SECRET")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wxlogin].web_secret must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [wxlogin].web_secret or WXLOGIN_WEB_SECRET",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WXLOGIN_WEB_SECRET is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "wx-login-web")]
+            redirect_base: match (
+                map.get("redirect_base"),
+                std::env::var("WXLOGIN_REDIRECT_BASE"),
+            ) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wxlogin].redirect_base must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [wxlogin].redirect_base or WXLOGIN_REDIRECT_BASE",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WXLOGIN_REDIRECT_BASE is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "wx-login-web")]
+            callback_path: match (
+                map.get("callback_path"),
+                std::env::var("WXLOGIN_CALLBACK_PATH"),
+            ) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wxlogin].callback_path must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_web_callback_path(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WXLOGIN_CALLBACK_PATH is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(any(
+                feature = "wx-login-mini",
+                feature = "wx-login-app",
+                feature = "wx-login-web"
+            ))]
+            client: super::default_http_client(),
+            #[cfg(feature = "wx-login-mini")]
+            mini_access_token: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "wx-login-web")]
+            web_login_callback: None,
+        })
     }
 }

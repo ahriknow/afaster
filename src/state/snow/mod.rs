@@ -16,6 +16,7 @@ fn default_datacenter_id() -> i64 {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct SnowConfig {
     /// 自定义起始时间（毫秒时间戳），0 表示使用当前时间
     #[serde(default = "default_epoch")]
@@ -26,6 +27,16 @@ pub struct SnowConfig {
     /// 数据中心 ID (0~31)
     #[serde(default = "default_datacenter_id")]
     pub datacenter_id: i64,
+}
+
+impl Default for SnowConfig {
+    fn default() -> Self {
+        Self {
+            epoch: default_epoch(),
+            worker_id: default_worker_id(),
+            datacenter_id: default_datacenter_id(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -74,7 +85,70 @@ impl Snowflake {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let config: SnowConfig = crate::state::extract(table, "snow")?;
+        let map = table
+            .get("snow")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let config = SnowConfig {
+            epoch: match (map.get("epoch"), std::env::var("SNOW_EPOCH")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid SNOW_EPOCH: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.as_integer().ok_or_else(|| {
+                        crate::Error::custom(50001, "[snow].epoch must be an integer")
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => default_epoch(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(50001, "SNOW_EPOCH is not valid UTF-8"));
+                }
+            },
+            worker_id: match (map.get("worker_id"), std::env::var("SNOW_WORKER_ID")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid SNOW_WORKER_ID: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.as_integer().ok_or_else(|| {
+                        crate::Error::custom(50001, "[snow].worker_id must be an integer")
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => default_worker_id(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "SNOW_WORKER_ID is not valid UTF-8",
+                    ));
+                }
+            },
+            datacenter_id: match (
+                map.get("datacenter_id"),
+                std::env::var("SNOW_DATACENTER_ID"),
+            ) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid SNOW_DATACENTER_ID: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.as_integer().ok_or_else(|| {
+                        crate::Error::custom(50001, "[snow].datacenter_id must be an integer")
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => default_datacenter_id(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "SNOW_DATACENTER_ID is not valid UTF-8",
+                    ));
+                }
+            },
+        };
+        if !(0..32).contains(&config.worker_id) || !(0..32).contains(&config.datacenter_id) {
+            return Err(crate::Error::custom(
+                50001,
+                "snow worker_id and datacenter_id must be in 0..32",
+            ));
+        }
         Ok(Self::from_config(&config))
     }
 

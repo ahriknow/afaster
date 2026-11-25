@@ -21,6 +21,7 @@ fn default_base_url() -> String {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct WxOfficial {
     pub app_id: String,
     pub app_secret: String,
@@ -38,6 +39,21 @@ pub struct WxOfficial {
     token_cache: Arc<Mutex<Option<CachedToken>>>,
     #[serde(skip)]
     pub(crate) mp_login_callback: Option<WxMpLoginCallbackFn>,
+}
+
+impl Default for WxOfficial {
+    fn default() -> Self {
+        Self {
+            app_id: String::new(),
+            app_secret: String::new(),
+            base_url: default_base_url(),
+            redirect_base: String::new(),
+            callback_path: default_mp_callback_path(),
+            client: reqwest::Client::new(),
+            token_cache: Arc::new(Mutex::new(None)),
+            mp_login_callback: None,
+        }
+    }
 }
 
 fn default_mp_callback_path() -> String {
@@ -1036,8 +1052,119 @@ impl AFasterWxOfficialExt for crate::AFaster {
 
 impl WxOfficial {
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "wx_official")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("wx_official")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let app_id = match (map.get("app_id"), std::env::var("WX_OFFICIAL_APP_ID")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_official].app_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [wx_official].app_id or WX_OFFICIAL_APP_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_OFFICIAL_APP_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let app_secret = match (
+            map.get("app_secret"),
+            std::env::var("WX_OFFICIAL_APP_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_official].app_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [wx_official].app_secret or WX_OFFICIAL_APP_SECRET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_OFFICIAL_APP_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        let base_url = match (map.get("base_url"), std::env::var("WX_OFFICIAL_BASE_URL")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_official].base_url must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_base_url(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_OFFICIAL_BASE_URL is not valid UTF-8",
+                ));
+            }
+        };
+        let redirect_base = match (
+            map.get("redirect_base"),
+            std::env::var("WX_OFFICIAL_REDIRECT_BASE"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_official].redirect_base must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_OFFICIAL_REDIRECT_BASE is not valid UTF-8",
+                ));
+            }
+        };
+        let callback_path = match (
+            map.get("callback_path"),
+            std::env::var("WX_OFFICIAL_CALLBACK_PATH"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_official].callback_path must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_mp_callback_path(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_OFFICIAL_CALLBACK_PATH is not valid UTF-8",
+                ));
+            }
+        };
+        Ok(Self {
+            app_id,
+            app_secret,
+            base_url,
+            redirect_base,
+            callback_path,
+            client: super::default_http_client(),
+            token_cache: Arc::new(Mutex::new(None)),
+            mp_login_callback: None,
+        })
     }
 }

@@ -13,7 +13,7 @@
 ```toml
 # Cargo.toml
 [dependencies]
-afaster = { version = "0.0.11", default-features = false, features = ["afast-http"] }
+afaster = { version = "0.0.12", default-features = false, features = ["afast-http"] }
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -30,6 +30,8 @@ async fn main() {
 ```
 
 更多实际配置见 [`config.toml`](./config.toml)，完整模块说明见 [在线文档](https://ahriknow.github.io/afaster/)。
+
+配置也可以通过环境变量提供；环境变量覆盖 TOML，同一配置项未设置环境变量时仍读取 TOML 或默认值。必填字段缺失时初始化会报错。完整变量名、默认值和必填清单见[环境变量配置文档](./docs/src/environment-variables.md)。
 
 ## 可选模块
 
@@ -82,7 +84,7 @@ async fn main() {
 增加 ORM 依赖和 feature：
 
 ```toml
-afaster = { version = "0.0.11", default-features = false, features = [
+afaster = { version = "0.0.12", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-migrate",

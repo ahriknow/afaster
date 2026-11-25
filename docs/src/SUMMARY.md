@@ -2,6 +2,7 @@
 
 [Introduction](./introduction.md)
 - [Quick Start](./quick-start.md)
+- [环境变量配置](./environment-variables.md)
 - [微信生态]()
   - [微信登录](./wx/wx-login.md)
   - [微信支付](./wx/wx-pay.md)

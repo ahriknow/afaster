@@ -38,6 +38,7 @@ fn default_state_expire() -> u64 {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct GitHubOAuth2 {
     /// GitHub OAuth App 的 Client ID
     pub client_id: String,
@@ -73,6 +74,25 @@ pub struct GitHubOAuth2 {
     /// state 有效期（秒），默认 300
     #[serde(default = "default_state_expire")]
     pub state_expire: u64,
+}
+
+impl Default for GitHubOAuth2 {
+    fn default() -> Self {
+        Self {
+            client_id: String::new(),
+            client_secret: String::new(),
+            redirect_base: String::new(),
+            callback_path: default_callback_path(),
+            scope: default_scope(),
+            authorize_url: default_authorize_url(),
+            token_url: default_token_url(),
+            user_url: default_user_url(),
+            client: reqwest::Client::new(),
+            github_oauth2_callback: None,
+            verify_state: false,
+            state_expire: default_state_expire(),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -459,9 +479,236 @@ impl GitHubOAuth2 {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "github_oauth2")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("github_oauth2")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let client_id = match (
+            map.get("client_id"),
+            std::env::var("GITHUB_OAUTH2_CLIENT_ID"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].client_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [github_oauth2].client_id or GITHUB_OAUTH2_CLIENT_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_CLIENT_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let client_secret = match (
+            map.get("client_secret"),
+            std::env::var("GITHUB_OAUTH2_CLIENT_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].client_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [github_oauth2].client_secret or GITHUB_OAUTH2_CLIENT_SECRET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_CLIENT_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        let redirect_base = match (
+            map.get("redirect_base"),
+            std::env::var("GITHUB_OAUTH2_REDIRECT_BASE"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].redirect_base must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [github_oauth2].redirect_base or GITHUB_OAUTH2_REDIRECT_BASE",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_REDIRECT_BASE is not valid UTF-8",
+                ));
+            }
+        };
+        let callback_path = match (
+            map.get("callback_path"),
+            std::env::var("GITHUB_OAUTH2_CALLBACK_PATH"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].callback_path must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_callback_path(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_CALLBACK_PATH is not valid UTF-8",
+                ));
+            }
+        };
+        let scope = match (map.get("scope"), std::env::var("GITHUB_OAUTH2_SCOPE")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].scope must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_scope(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_SCOPE is not valid UTF-8",
+                ));
+            }
+        };
+        let authorize_url = match (
+            map.get("authorize_url"),
+            std::env::var("GITHUB_OAUTH2_AUTHORIZE_URL"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].authorize_url must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_authorize_url(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_AUTHORIZE_URL is not valid UTF-8",
+                ));
+            }
+        };
+        let token_url = match (
+            map.get("token_url"),
+            std::env::var("GITHUB_OAUTH2_TOKEN_URL"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].token_url must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_token_url(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_TOKEN_URL is not valid UTF-8",
+                ));
+            }
+        };
+        let user_url = match (map.get("user_url"), std::env::var("GITHUB_OAUTH2_USER_URL")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].user_url must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_user_url(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_USER_URL is not valid UTF-8",
+                ));
+            }
+        };
+        let verify_state = match (
+            map.get("verify_state"),
+            std::env::var("GITHUB_OAUTH2_VERIFY_STATE"),
+        ) {
+            (_, Ok(value)) => value.parse().map_err(|error| {
+                crate::Error::custom(
+                    50001,
+                    format!("Invalid GITHUB_OAUTH2_VERIFY_STATE: {error}"),
+                )
+            })?,
+            (Some(value), Err(std::env::VarError::NotPresent)) => {
+                value.as_bool().ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].verify_state must be a boolean")
+                })?
+            }
+            (None, Err(std::env::VarError::NotPresent)) => false,
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_VERIFY_STATE is not valid UTF-8",
+                ));
+            }
+        };
+        let state_expire = match (
+            map.get("state_expire"),
+            std::env::var("GITHUB_OAUTH2_STATE_EXPIRE"),
+        ) {
+            (_, Ok(value)) => value.parse().map_err(|error| {
+                crate::Error::custom(
+                    50001,
+                    format!("Invalid GITHUB_OAUTH2_STATE_EXPIRE: {error}"),
+                )
+            })?,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_integer()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[github_oauth2].state_expire must be an integer")
+                })?
+                .try_into()
+                .map_err(|_| {
+                    crate::Error::custom(50001, "[github_oauth2].state_expire is out of range")
+                })?,
+            (None, Err(std::env::VarError::NotPresent)) => default_state_expire(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "GITHUB_OAUTH2_STATE_EXPIRE is not valid UTF-8",
+                ));
+            }
+        };
+        Ok(Self {
+            client_id,
+            client_secret,
+            redirect_base,
+            callback_path,
+            scope,
+            authorize_url,
+            token_url,
+            user_url,
+            client: super::default_http_client(),
+            github_oauth2_callback: None,
+            verify_state,
+            state_expire,
+        })
     }
 }
 

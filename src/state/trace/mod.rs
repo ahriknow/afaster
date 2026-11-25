@@ -44,6 +44,7 @@ use self::store::{SpanData, SpanStatus};
 
 /// 链路追踪配置
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct TracingConfig {
     /// 服务名称
     #[serde(default = "default_service_name")]
@@ -86,7 +87,7 @@ impl Default for TracingConfig {
         Self {
             service_name: default_service_name(),
             #[cfg(feature = "trace-sqlite")]
-            db_path: None,
+            db_path: Some("tracing.db".to_owned()),
             #[cfg(feature = "trace-http")]
             http: None,
             #[cfg(feature = "trace-tcp")]
@@ -168,7 +169,331 @@ impl TracingService {
     }
 
     pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let config: TracingConfig = crate::state::extract(table, "tracing")?;
+        let map = table
+            .get("tracing")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let config = TracingConfig {
+            service_name: match (
+                map.get("service_name"),
+                std::env::var("TRACING_SERVICE_NAME"),
+            ) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[tracing].service_name must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_service_name(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TRACING_SERVICE_NAME is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "trace-sqlite")]
+            db_path: match (map.get("db_path"), std::env::var("TRACING_DB_PATH")) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[tracing].db_path must be a string")
+                        })?
+                        .to_owned(),
+                ),
+                (None, Err(std::env::VarError::NotPresent)) => Some("tracing.db".to_owned()),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TRACING_DB_PATH is not valid UTF-8",
+                    ));
+                }
+            },
+            #[cfg(feature = "trace-http")]
+            http: {
+                let http_map = map.get("http").and_then(toml::Value::as_table).cloned();
+                let enabled = http_map.is_some()
+                    || [
+                        "TRACING_HTTP_URL",
+                        "TRACING_HTTP_PATH",
+                        "TRACING_HTTP_TOKEN",
+                        "TRACING_HTTP_TIMEOUT",
+                    ]
+                    .iter()
+                    .any(|name| std::env::var_os(name).is_some());
+                if enabled {
+                    let http_map = http_map.unwrap_or_default();
+                    Some(http::HttpTraceStoreConfig {
+                        url: match (http_map.get("url"), std::env::var("TRACING_HTTP_URL")) {
+                            (_, Ok(value)) => value,
+                            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                                .as_str()
+                                .ok_or_else(|| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.http].url must be a string",
+                                    )
+                                })?
+                                .to_owned(),
+                            (None, Err(std::env::VarError::NotPresent)) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "missing required configuration [tracing.http].url or TRACING_HTTP_URL",
+                                ));
+                            }
+                            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "TRACING_HTTP_URL is not valid UTF-8",
+                                ));
+                            }
+                        },
+                        path: match (http_map.get("path"), std::env::var("TRACING_HTTP_PATH")) {
+                            (_, Ok(value)) => value,
+                            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                                .as_str()
+                                .ok_or_else(|| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.http].path must be a string",
+                                    )
+                                })?
+                                .to_owned(),
+                            (None, Err(std::env::VarError::NotPresent)) => {
+                                "/tracing/report".to_owned()
+                            }
+                            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "TRACING_HTTP_PATH is not valid UTF-8",
+                                ));
+                            }
+                        },
+                        token: match (http_map.get("token"), std::env::var("TRACING_HTTP_TOKEN")) {
+                            (_, Ok(value)) => Some(value),
+                            (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                                value
+                                    .as_str()
+                                    .ok_or_else(|| {
+                                        crate::Error::custom(
+                                            50001,
+                                            "[tracing.http].token must be a string",
+                                        )
+                                    })?
+                                    .to_owned(),
+                            ),
+                            (None, Err(std::env::VarError::NotPresent)) => None,
+                            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "TRACING_HTTP_TOKEN is not valid UTF-8",
+                                ));
+                            }
+                        },
+                        timeout: match (
+                            http_map.get("timeout"),
+                            std::env::var("TRACING_HTTP_TIMEOUT"),
+                        ) {
+                            (_, Ok(value)) => value.parse().map_err(|error| {
+                                crate::Error::custom(
+                                    50001,
+                                    format!("Invalid TRACING_HTTP_TIMEOUT: {error}"),
+                                )
+                            })?,
+                            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                                .as_integer()
+                                .ok_or_else(|| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.http].timeout must be an integer",
+                                    )
+                                })?
+                                .try_into()
+                                .map_err(|_| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.http].timeout is out of range",
+                                    )
+                                })?,
+                            (None, Err(std::env::VarError::NotPresent)) => 5,
+                            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "TRACING_HTTP_TIMEOUT is not valid UTF-8",
+                                ));
+                            }
+                        },
+                    })
+                } else {
+                    None
+                }
+            },
+            #[cfg(feature = "trace-tcp")]
+            tcp: {
+                let tcp_map = map.get("tcp").and_then(toml::Value::as_table).cloned();
+                let enabled = tcp_map.is_some()
+                    || [
+                        "TRACING_TCP_ADDR",
+                        "TRACING_TCP_CONNECT_TIMEOUT",
+                        "TRACING_TCP_RECONNECT_INTERVAL",
+                    ]
+                    .iter()
+                    .any(|name| std::env::var_os(name).is_some());
+                if enabled {
+                    let tcp_map = tcp_map.unwrap_or_default();
+                    Some(tcp::TcpTraceStoreConfig {
+                        addr: match (tcp_map.get("addr"), std::env::var("TRACING_TCP_ADDR")) {
+                            (_, Ok(value)) => value,
+                            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                                .as_str()
+                                .ok_or_else(|| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.tcp].addr must be a string",
+                                    )
+                                })?
+                                .to_owned(),
+                            (None, Err(std::env::VarError::NotPresent)) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "missing required configuration [tracing.tcp].addr or TRACING_TCP_ADDR",
+                                ));
+                            }
+                            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "TRACING_TCP_ADDR is not valid UTF-8",
+                                ));
+                            }
+                        },
+                        connect_timeout: match (
+                            tcp_map.get("connect_timeout"),
+                            std::env::var("TRACING_TCP_CONNECT_TIMEOUT"),
+                        ) {
+                            (_, Ok(value)) => value.parse().map_err(|error| {
+                                crate::Error::custom(
+                                    50001,
+                                    format!("Invalid TRACING_TCP_CONNECT_TIMEOUT: {error}"),
+                                )
+                            })?,
+                            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                                .as_integer()
+                                .ok_or_else(|| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.tcp].connect_timeout must be an integer",
+                                    )
+                                })?
+                                .try_into()
+                                .map_err(|_| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.tcp].connect_timeout is out of range",
+                                    )
+                                })?,
+                            (None, Err(std::env::VarError::NotPresent)) => 5,
+                            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "TRACING_TCP_CONNECT_TIMEOUT is not valid UTF-8",
+                                ));
+                            }
+                        },
+                        reconnect_interval: match (
+                            tcp_map.get("reconnect_interval"),
+                            std::env::var("TRACING_TCP_RECONNECT_INTERVAL"),
+                        ) {
+                            (_, Ok(value)) => value.parse().map_err(|error| {
+                                crate::Error::custom(
+                                    50001,
+                                    format!("Invalid TRACING_TCP_RECONNECT_INTERVAL: {error}"),
+                                )
+                            })?,
+                            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                                .as_integer()
+                                .ok_or_else(|| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.tcp].reconnect_interval must be an integer",
+                                    )
+                                })?
+                                .try_into()
+                                .map_err(|_| {
+                                    crate::Error::custom(
+                                        50001,
+                                        "[tracing.tcp].reconnect_interval is out of range",
+                                    )
+                                })?,
+                            (None, Err(std::env::VarError::NotPresent)) => 3,
+                            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                                return Err(crate::Error::custom(
+                                    50001,
+                                    "TRACING_TCP_RECONNECT_INTERVAL is not valid UTF-8",
+                                ));
+                            }
+                        },
+                    })
+                } else {
+                    None
+                }
+            },
+            url: match (map.get("url"), std::env::var("TRACING_URL")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[tracing].url must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_url(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TRACING_URL is not valid UTF-8",
+                    ));
+                }
+            },
+            event: match (map.get("event"), std::env::var("TRACING_EVENT")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[tracing].event must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_event(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TRACING_EVENT is not valid UTF-8",
+                    ));
+                }
+            },
+            retention_days: match (
+                map.get("retention_days"),
+                std::env::var("TRACING_RETENTION_DAYS"),
+            ) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid TRACING_RETENTION_DAYS: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[tracing].retention_days must be an integer")
+                    })?
+                    .try_into()
+                    .map_err(|_| {
+                        crate::Error::custom(50001, "[tracing].retention_days is out of range")
+                    })?,
+                (None, Err(std::env::VarError::NotPresent)) => default_retention_days(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TRACING_RETENTION_DAYS is not valid UTF-8",
+                    ));
+                }
+            },
+        };
         init_tracing(&config).await
     }
 

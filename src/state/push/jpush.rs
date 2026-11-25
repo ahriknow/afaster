@@ -7,6 +7,7 @@ use super::{Notification, PushTarget};
 // ═══════════════════════════════════════════════════════════════
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct JPush {
     /// 极光应用 AppKey
     pub app_key: String,
@@ -18,6 +19,18 @@ pub struct JPush {
     pub apns_production: bool,
     #[serde(skip)]
     pub client: reqwest::Client,
+}
+
+impl Default for JPush {
+    fn default() -> Self {
+        Self {
+            app_key: String::new(),
+            master_secret: String::new(),
+            base_url: default_base_url(),
+            apns_production: true,
+            client: reqwest::Client::new(),
+        }
+    }
 }
 
 fn default_base_url() -> String {
@@ -58,6 +71,109 @@ pub struct JPushResult {
     pub msg_id: Option<String>,
     #[serde(flatten)]
     pub error: Option<serde_json::Value>,
+}
+
+impl JPush {
+    pub(crate) fn from_table(table: &toml::Table) -> crate::Result<Self> {
+        let map = table
+            .get("push")
+            .and_then(toml::Value::as_table)
+            .and_then(|value| value.get("jpush"))
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let app_key = match (map.get("app_key"), std::env::var("PUSH_JPUSH_APP_KEY")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[push.jpush].app_key must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [push.jpush].app_key or PUSH_JPUSH_APP_KEY",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "PUSH_JPUSH_APP_KEY is not valid UTF-8",
+                ));
+            }
+        };
+        let master_secret = match (
+            map.get("master_secret"),
+            std::env::var("PUSH_JPUSH_MASTER_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[push.jpush].master_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [push.jpush].master_secret or PUSH_JPUSH_MASTER_SECRET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "PUSH_JPUSH_MASTER_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        let base_url = match (map.get("base_url"), std::env::var("PUSH_JPUSH_BASE_URL")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[push.jpush].base_url must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_base_url(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "PUSH_JPUSH_BASE_URL is not valid UTF-8",
+                ));
+            }
+        };
+        let apns_production = match (
+            map.get("apns_production"),
+            std::env::var("PUSH_JPUSH_APNS_PRODUCTION"),
+        ) {
+            (_, Ok(value)) => value.parse().map_err(|error| {
+                crate::Error::custom(
+                    50001,
+                    format!("Invalid PUSH_JPUSH_APNS_PRODUCTION: {error}"),
+                )
+            })?,
+            (Some(value), Err(std::env::VarError::NotPresent)) => {
+                value.as_bool().ok_or_else(|| {
+                    crate::Error::custom(50001, "[push.jpush].apns_production must be a boolean")
+                })?
+            }
+            (None, Err(std::env::VarError::NotPresent)) => true,
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "PUSH_JPUSH_APNS_PRODUCTION is not valid UTF-8",
+                ));
+            }
+        };
+        Ok(Self {
+            app_key,
+            master_secret,
+            base_url,
+            apns_production,
+            client: super::super::default_http_client(),
+        })
+    }
 }
 
 impl JPushResult {

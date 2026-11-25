@@ -31,6 +31,7 @@ fn default_renewal_days() -> u32 {
 /// ACME 模块自身不启动任何网络监听，所有验证请求由 afast 的 HTTP 服务处理。
 /// HTTPS 端口使用 `[tls].port` 配置。
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct AcmeConfig {
     /// 申请证书的域名列表（多域名将生成一个 SAN 证书）
     pub domains: Vec<String>,
@@ -52,6 +53,19 @@ pub struct AcmeConfig {
     /// 设为 true 时，用户需自行配置反向代理将 80 端口转发到服务端口。
     #[serde(default = "default_allow_non_80")]
     pub allow_non_80: bool,
+}
+
+impl Default for AcmeConfig {
+    fn default() -> Self {
+        Self {
+            domains: Vec::new(),
+            contact: None,
+            cache_dir: default_cache_dir(),
+            staging: false,
+            renewal_days: default_renewal_days(),
+            allow_non_80: default_allow_non_80(),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -170,8 +184,123 @@ impl AcmeState {
     }
 
     pub fn from_table(table: &toml::Table, port: u16) -> crate::Result<Self> {
-        let config: AcmeConfig = crate::state::extract(table, "acme")?;
-        if !config.allow_non_80 && port != 80 {
+        let map = table
+            .get("acme")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let config = AcmeConfig {
+            domains: match (map.get("domains"), std::env::var("ACME_DOMAINS")) {
+                (_, Ok(value)) => value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|domain| !domain.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.clone().try_into().map_err(|error| {
+                        crate::Error::custom(50001, format!("[acme].domains: {error}"))
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => Vec::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ACME_DOMAINS is not valid UTF-8",
+                    ));
+                }
+            },
+            contact: match (map.get("contact"), std::env::var("ACME_CONTACT")) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[acme].contact must be a string")
+                        })?
+                        .to_owned(),
+                ),
+                (None, Err(std::env::VarError::NotPresent)) => None,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ACME_CONTACT is not valid UTF-8",
+                    ));
+                }
+            },
+            cache_dir: match (map.get("cache_dir"), std::env::var("ACME_CACHE_DIR")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[acme].cache_dir must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_cache_dir(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ACME_CACHE_DIR is not valid UTF-8",
+                    ));
+                }
+            },
+            staging: match (map.get("staging"), std::env::var("ACME_STAGING")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid ACME_STAGING: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.as_bool().ok_or_else(|| {
+                        crate::Error::custom(50001, "[acme].staging must be a boolean")
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => false,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ACME_STAGING is not valid UTF-8",
+                    ));
+                }
+            },
+            renewal_days: match (map.get("renewal_days"), std::env::var("ACME_RENEWAL_DAYS")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid ACME_RENEWAL_DAYS: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[acme].renewal_days must be an integer")
+                    })?
+                    .try_into()
+                    .map_err(|_| {
+                        crate::Error::custom(50001, "[acme].renewal_days is out of range")
+                    })?,
+                (None, Err(std::env::VarError::NotPresent)) => default_renewal_days(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ACME_RENEWAL_DAYS is not valid UTF-8",
+                    ));
+                }
+            },
+            allow_non_80: match (map.get("allow_non_80"), std::env::var("ACME_ALLOW_NON_80")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid ACME_ALLOW_NON_80: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.as_bool().ok_or_else(|| {
+                        crate::Error::custom(50001, "[acme].allow_non_80 must be a boolean")
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => default_allow_non_80(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "ACME_ALLOW_NON_80 is not valid UTF-8",
+                    ));
+                }
+            },
+        };
+        if !config.domains.is_empty() && !config.allow_non_80 && port != 80 {
             return Err(crate::Error::custom(
                 50001,
                 format!(
@@ -647,6 +776,10 @@ impl AcmeState {
     /// - 缓存命中但域名有新增/变更 → 删除旧证书，后台重新申请，返回 `None`
     /// - 缓存未命中 → 在后台申请，申请成功后自动启动续期任务，返回 `None`
     pub fn init_certs(&self, state: crate::AppState) -> Option<(PathBuf, PathBuf)> {
+        if self.config.domains.is_empty() {
+            return None;
+        }
+
         if self.has_cached_certs() {
             #[cfg(feature = "log")]
             tracing::debug!(

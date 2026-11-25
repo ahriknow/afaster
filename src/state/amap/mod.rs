@@ -17,6 +17,7 @@ const AMAP_BASE: &str = "https://restapi.amap.com";
 ///
 /// API: https://lbs.amap.com/api/webservice/summary
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct Amap {
     /// Web 服务 API Key
     pub key: String,
@@ -475,8 +476,30 @@ impl Amap {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "amap")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("amap")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let key = match (map.get("key"), std::env::var("AMAP_KEY")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[amap].key must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [amap].key or AMAP_KEY",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(50001, "AMAP_KEY is not valid UTF-8"));
+            }
+        };
+        Ok(Self {
+            key,
+            client: super::default_http_client(),
+        })
     }
 }

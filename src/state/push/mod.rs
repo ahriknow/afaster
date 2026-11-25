@@ -160,7 +160,8 @@ pub struct PushResult {
 /// // 自动可用
 /// let result = state.push.send_getui(&target, &notification).await?;
 /// ```
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Default)]
+#[serde(default)]
 pub struct PushManager {
     #[cfg(feature = "push-getui")]
     pub getui: GeTui,
@@ -188,7 +189,14 @@ impl PushManager {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "push")?;
+        let mut instance = Self {
+            #[cfg(feature = "push-getui")]
+            getui: GeTui::from_table(table)?,
+            #[cfg(feature = "push-jpush")]
+            jpush: JPush::from_table(table)?,
+            #[cfg(feature = "push-xiaomi")]
+            xiaomi: XiaomiPush::from_table(table)?,
+        };
         instance.init();
         Ok(instance)
     }

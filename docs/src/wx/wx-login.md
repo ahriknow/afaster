@@ -50,6 +50,20 @@ let session_key = result.session_key;
 | 方法 | 参数 | 返回 | 说明 |
 |------|------|------|------|
 | `mini_login` | `code: &str` | `Result<MiniLoginResponse>` | 小程序登录 |
+| `get_user_phone_number` | `code: &str` | `Result<WxMiniPhoneNumber>` | 用手机号授权 code 获取手机号 |
+
+### 小程序手机号授权
+
+前端通过 `button open-type="getPhoneNumber"` 获得一次性 code，并由服务端调用：
+
+```rust
+let phone = state.wxlogin.get_user_phone_number(&code).await?;
+let phone_number = phone.pure_phone_number;
+```
+
+此方法使用小程序 AppID/AppSecret 获取 `access_token`，并调用微信手机号接口。`access_token` 在 `WxLogin` 实例内缓存，并在过期前刷新。手机号授权 code 只能提交给服务端，不能在客户端自行解析或作为手机号存储。
+
+`WxMiniPhoneNumber` 包含 `phone_number`、`pure_phone_number`、`country_code`。调用方负责按业务隐私要求处理手机号，不应将完整号码写入日志。
 
 ### MiniLoginResponse
 

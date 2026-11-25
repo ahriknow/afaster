@@ -65,7 +65,8 @@ use std::path::PathBuf;
 // ═══════════════════════════════════════════════════════════════
 
 /// Serve 模块配置（从 config.toml 反序列化）
-#[derive(serde::Deserialize, Clone, Debug)]
+#[derive(serde::Deserialize, Clone, Debug, Default)]
+#[serde(default)]
 pub struct ServeConfig {
     /// URL 前缀, 如 "/" 或 "/app", 默认 "/"
     pub prefix: Option<String>,
@@ -157,21 +158,110 @@ impl Serve {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Vec<Self>> {
-        // 尝试解析 [[serve]] 数组形式
-        if let Some(serves) = table.get("serve") {
-            // 判断是数组还是单个 table
-            if let Ok(arr) = serves.clone().try_into::<Vec<ServeConfig>>() {
-                return arr
-                    .into_iter()
-                    .map(|c| Ok(Self::from_config(&c, "./static")))
-                    .collect();
+        let serve_value = table.get("serve");
+        let (toml_configs, single_map) = match serve_value {
+            Some(toml::Value::Array(values)) => (values.clone(), None),
+            Some(toml::Value::Table(map)) => (Vec::new(), Some(map.clone())),
+            Some(_) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "[serve] must be a table or an array of tables",
+                ));
             }
-            // 单个 [serve] section，兼容旧配置
-            if let Ok(config) = serves.clone().try_into::<ServeConfig>() {
-                return Ok(vec![Self::from_config(&config, "./static")]);
+            None => (Vec::new(), None),
+        };
+        let mut indexes = std::collections::BTreeSet::new();
+        for (name, _) in std::env::vars_os() {
+            let name = name.to_string_lossy();
+            if let Some(index) = name
+                .strip_prefix("SERVE_")
+                .and_then(|suffix| suffix.split('_').next())
+                .and_then(|index| index.parse::<usize>().ok())
+            {
+                indexes.insert(index);
             }
         }
-        Ok(Vec::new())
+        let unindexed_envs_exist =
+            std::env::var_os("SERVE_PREFIX").is_some() || std::env::var_os("SERVE_SPA").is_some();
+        let count = toml_configs
+            .len()
+            .max(usize::from(single_map.is_some()))
+            .max(indexes.last().map_or(0, |index| index + 1))
+            .max(usize::from(
+                toml_configs.is_empty() && single_map.is_none() && unindexed_envs_exist,
+            ));
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        let use_single_environment = count == 1 && indexes.is_empty() && unindexed_envs_exist;
+        let mut serves = Vec::with_capacity(count);
+        for index in 0..count {
+            let config_map = if let Some(map) = single_map.as_ref() {
+                map.clone()
+            } else {
+                toml_configs
+                    .get(index)
+                    .and_then(toml::Value::as_table)
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            let prefix = if use_single_environment {
+                "SERVE".to_owned()
+            } else {
+                format!("SERVE_{index}")
+            };
+            let config = ServeConfig {
+                prefix: match (
+                    config_map.get("prefix"),
+                    std::env::var(format!("{prefix}_PREFIX")),
+                ) {
+                    (_, Ok(value)) => Some(value),
+                    (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                        value
+                            .as_str()
+                            .ok_or_else(|| {
+                                crate::Error::custom(
+                                    50001,
+                                    format!("[serve][{index}].prefix must be a string"),
+                                )
+                            })?
+                            .to_owned(),
+                    ),
+                    (None, Err(std::env::VarError::NotPresent)) => None,
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            format!("{prefix}_PREFIX is not valid UTF-8"),
+                        ));
+                    }
+                },
+                spa: match (
+                    config_map.get("spa"),
+                    std::env::var(format!("{prefix}_SPA")),
+                ) {
+                    (_, Ok(value)) => value.parse().map_err(|error| {
+                        crate::Error::custom(50001, format!("Invalid {prefix}_SPA: {error}"))
+                    })?,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => {
+                        value.as_bool().ok_or_else(|| {
+                            crate::Error::custom(
+                                50001,
+                                format!("[serve][{index}].spa must be a boolean"),
+                            )
+                        })?
+                    }
+                    (None, Err(std::env::VarError::NotPresent)) => false,
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            format!("{prefix}_SPA is not valid UTF-8"),
+                        ));
+                    }
+                },
+            };
+            serves.push(Self::from_config(&config, "./static"));
+        }
+        Ok(serves)
     }
 
     /// 设置 URL 前缀

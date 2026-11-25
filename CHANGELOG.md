@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.12]
+
+- **Configuration**: Allow `src/state` modules to read configuration from environment variables, with environment values taking precedence over TOML; report missing required settings and document defaults/variables.
+- **WxLogin**: Add `get_user_phone_number(code)` in `WxLogin`.
+
 ## [0.0.11]
 
 ### Added

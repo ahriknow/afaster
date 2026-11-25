@@ -45,6 +45,7 @@ pub type RefundCallbackFn =
 
 /// 支付宝配置
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct AliPayConfig {
     /// 应用 ID
     pub app_id: String,
@@ -69,6 +70,21 @@ pub struct AliPayConfig {
     pub sign_type: String,
 }
 
+impl Default for AliPayConfig {
+    fn default() -> Self {
+        Self {
+            app_id: String::new(),
+            private_key: String::new(),
+            alipay_public_key: String::new(),
+            notify_url: None,
+            return_url: None,
+            gateway: default_gateway(),
+            charset: default_charset(),
+            sign_type: default_sign_type(),
+        }
+    }
+}
+
 fn default_gateway() -> String {
     GATEWAY_URL.to_string()
 }
@@ -91,6 +107,7 @@ pub struct AliPayRuntime {
 
 /// 支付宝电脑网站支付模块
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct AliPay {
     #[serde(flatten)]
     pub config: AliPayConfig,
@@ -103,6 +120,16 @@ pub struct AliPay {
 
 fn default_callback_path() -> String {
     "ali/pay/notify".to_string()
+}
+
+impl Default for AliPay {
+    fn default() -> Self {
+        Self {
+            config: AliPayConfig::default(),
+            callback_path: default_callback_path(),
+            runtime: AliPayRuntime::default(),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -507,7 +534,11 @@ impl AliPay {
     /// 初始化运行时（加载私钥/公钥、创建 HTTP 客户端）
     pub fn init(&mut self) -> afast::Result<()> {
         self.runtime.client = super::default_http_client();
-        self.runtime.private_key_parsed = Some(load_private_key(&self.config.private_key)?);
+        self.runtime.private_key_parsed = if self.config.private_key.is_empty() {
+            None
+        } else {
+            Some(load_private_key(&self.config.private_key)?)
+        };
         if !self.config.alipay_public_key.is_empty() {
             self.runtime.alipay_public_key_parsed =
                 Some(load_public_key(&self.config.alipay_public_key)?);
@@ -516,7 +547,181 @@ impl AliPay {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "ali_pay")?;
+        let map = table
+            .get("ali_pay")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let app_id = match (map.get("app_id"), std::env::var("ALI_PAY_APP_ID")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[ali_pay].app_id must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [ali_pay].app_id or ALI_PAY_APP_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_APP_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let private_key = match (map.get("private_key"), std::env::var("ALI_PAY_PRIVATE_KEY")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[ali_pay].private_key must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [ali_pay].private_key or ALI_PAY_PRIVATE_KEY",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_PRIVATE_KEY is not valid UTF-8",
+                ));
+            }
+        };
+        let alipay_public_key = match (
+            map.get("alipay_public_key"),
+            std::env::var("ALI_PAY_ALIPAY_PUBLIC_KEY"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[ali_pay].alipay_public_key must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_ALIPAY_PUBLIC_KEY is not valid UTF-8",
+                ));
+            }
+        };
+        let notify_url = match (map.get("notify_url"), std::env::var("ALI_PAY_NOTIFY_URL")) {
+            (_, Ok(value)) => Some(value),
+            (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[ali_pay].notify_url must be a string")
+                    })?
+                    .to_owned(),
+            ),
+            (None, Err(std::env::VarError::NotPresent)) => None,
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_NOTIFY_URL is not valid UTF-8",
+                ));
+            }
+        };
+        let return_url = match (map.get("return_url"), std::env::var("ALI_PAY_RETURN_URL")) {
+            (_, Ok(value)) => Some(value),
+            (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[ali_pay].return_url must be a string")
+                    })?
+                    .to_owned(),
+            ),
+            (None, Err(std::env::VarError::NotPresent)) => None,
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_RETURN_URL is not valid UTF-8",
+                ));
+            }
+        };
+        let gateway = match (map.get("gateway"), std::env::var("ALI_PAY_GATEWAY")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[ali_pay].gateway must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_gateway(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_GATEWAY is not valid UTF-8",
+                ));
+            }
+        };
+        let charset = match (map.get("charset"), std::env::var("ALI_PAY_CHARSET")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[ali_pay].charset must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_charset(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_CHARSET is not valid UTF-8",
+                ));
+            }
+        };
+        let sign_type = match (map.get("sign_type"), std::env::var("ALI_PAY_SIGN_TYPE")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[ali_pay].sign_type must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_sign_type(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_SIGN_TYPE is not valid UTF-8",
+                ));
+            }
+        };
+        let callback_path = match (
+            map.get("callback_path"),
+            std::env::var("ALI_PAY_CALLBACK_PATH"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[ali_pay].callback_path must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_callback_path(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "ALI_PAY_CALLBACK_PATH is not valid UTF-8",
+                ));
+            }
+        };
+        let mut instance = Self {
+            config: AliPayConfig {
+                app_id,
+                private_key,
+                alipay_public_key,
+                notify_url,
+                return_url,
+                gateway,
+                charset,
+                sign_type,
+            },
+            callback_path,
+            runtime: AliPayRuntime::default(),
+        };
         instance.init()?;
         Ok(instance)
     }

@@ -35,6 +35,7 @@ fn default_sts_expire() -> u64 {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct Oss {
     #[serde(default = "default_endpoint")]
     pub endpoint: String, // 可选，为空时从 region 推导: oss-{region}.aliyuncs.com
@@ -55,6 +56,24 @@ pub struct Oss {
     pub domain: String, // 自定义域名，如 "file.kuaizhunyun.com"
     #[serde(skip)]
     pub client: reqwest::Client,
+}
+
+impl Default for Oss {
+    fn default() -> Self {
+        Self {
+            endpoint: default_endpoint(),
+            access_key_id: String::new(),
+            access_key_secret: String::new(),
+            bucket: String::new(),
+            url_expire: default_url_expire(),
+            sts_expire: default_sts_expire(),
+            role_arn: String::new(),
+            region: String::new(),
+            prefix: String::new(),
+            domain: String::new(),
+            client: reqwest::Client::new(),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -633,8 +652,185 @@ x-oss-signature-version=OSS4-HMAC-SHA256",
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "oss")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("oss")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let access_key_id = match (map.get("access_key_id"), std::env::var("OSS_ACCESS_KEY_ID")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].access_key_id must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [oss].access_key_id or OSS_ACCESS_KEY_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "OSS_ACCESS_KEY_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let access_key_secret = match (
+            map.get("access_key_secret"),
+            std::env::var("OSS_ACCESS_KEY_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[oss].access_key_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [oss].access_key_secret or OSS_ACCESS_KEY_SECRET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "OSS_ACCESS_KEY_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        let bucket = match (
+            map.get("bucket").or_else(|| map.get("bucket_name")),
+            std::env::var("OSS_BUCKET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].bucket must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [oss].bucket or OSS_BUCKET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(50001, "OSS_BUCKET is not valid UTF-8"));
+            }
+        };
+        let region = match (map.get("region"), std::env::var("OSS_REGION")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].region must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [oss].region or OSS_REGION",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(50001, "OSS_REGION is not valid UTF-8"));
+            }
+        };
+        let endpoint = match (map.get("endpoint"), std::env::var("OSS_ENDPOINT")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].endpoint must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_endpoint(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "OSS_ENDPOINT is not valid UTF-8",
+                ));
+            }
+        };
+        let url_expire = match (map.get("url_expire"), std::env::var("OSS_URL_EXPIRE")) {
+            (_, Ok(value)) => value.parse().map_err(|error| {
+                crate::Error::custom(50001, format!("Invalid OSS_URL_EXPIRE: {error}"))
+            })?,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_integer()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].url_expire must be an integer"))?
+                .try_into()
+                .map_err(|_| crate::Error::custom(50001, "[oss].url_expire is out of range"))?,
+            (None, Err(std::env::VarError::NotPresent)) => default_url_expire(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "OSS_URL_EXPIRE is not valid UTF-8",
+                ));
+            }
+        };
+        let sts_expire = match (map.get("sts_expire"), std::env::var("OSS_STS_EXPIRE")) {
+            (_, Ok(value)) => value.parse().map_err(|error| {
+                crate::Error::custom(50001, format!("Invalid OSS_STS_EXPIRE: {error}"))
+            })?,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_integer()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].sts_expire must be an integer"))?
+                .try_into()
+                .map_err(|_| crate::Error::custom(50001, "[oss].sts_expire is out of range"))?,
+            (None, Err(std::env::VarError::NotPresent)) => default_sts_expire(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "OSS_STS_EXPIRE is not valid UTF-8",
+                ));
+            }
+        };
+        let role_arn = match (map.get("role_arn"), std::env::var("OSS_ROLE_ARN")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].role_arn must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "OSS_ROLE_ARN is not valid UTF-8",
+                ));
+            }
+        };
+        let prefix = match (map.get("prefix"), std::env::var("OSS_PREFIX")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].prefix must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(50001, "OSS_PREFIX is not valid UTF-8"));
+            }
+        };
+        let domain = match (map.get("domain"), std::env::var("OSS_DOMAIN")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[oss].domain must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(50001, "OSS_DOMAIN is not valid UTF-8"));
+            }
+        };
+        Ok(Self {
+            endpoint,
+            access_key_id,
+            access_key_secret,
+            bucket,
+            url_expire,
+            sts_expire,
+            role_arn,
+            region,
+            prefix,
+            domain,
+            client: super::default_http_client(),
+        })
     }
 }

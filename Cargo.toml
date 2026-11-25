@@ -1,6 +1,6 @@
 [package]
 name = "afaster"
-version = "0.0.11"
+version = "0.0.12"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -13,7 +13,7 @@ categories = ["web-programming", "asynchronous"]
 members = ["afaster-derive", "examples/email", "examples/amap", "examples/tmap", "examples/redis", "examples/scheduler", "examples/excel", "examples/pdf", "examples/image", "examples/file", "examples/argon2", "example"]
 
 [workspace.package]
-version = "0.0.11"
+version = "0.0.12"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -129,7 +129,7 @@ afast-tag-u32 = ["afast/tag-u32"]
 afast = { workspace = true }
 afastdata = { workspace = true }
 afastorm = { workspace = true, optional = true }
-afaster-derive = { version = "0.0.11", path = "afaster-derive", optional = true }
+afaster-derive = { version = "0.0.12", path = "afaster-derive", optional = true }
 clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context"], optional = true }
 chrono = { workspace = true }
 serde = { workspace = true }

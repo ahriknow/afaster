@@ -7,9 +7,19 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct Token {
     pub expire: i64,
     pub secret: String,
+}
+
+impl Default for Token {
+    fn default() -> Self {
+        Self {
+            expire: 24,
+            secret: String::new(),
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -127,6 +137,49 @@ pub struct Claims<T = ()> {
 
 impl Token {
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        crate::state::extract(table, "token")
+        let map = table
+            .get("token")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let token = Self {
+            expire: match (map.get("expire"), std::env::var("TOKEN_EXPIRE")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid TOKEN_EXPIRE: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.as_integer().ok_or_else(|| {
+                        crate::Error::custom(50001, "[token].expire must be an integer")
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => 24,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TOKEN_EXPIRE is not valid UTF-8",
+                    ));
+                }
+            },
+            secret: match (map.get("secret"), std::env::var("TOKEN_SECRET")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[token].secret must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "missing required configuration [token].secret or TOKEN_SECRET",
+                    ));
+                }
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "TOKEN_SECRET is not valid UTF-8",
+                    ));
+                }
+            },
+        };
+        Ok(token)
     }
 }

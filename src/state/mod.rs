@@ -34,16 +34,6 @@ pub fn default_http_client() -> reqwest::Client {
         .unwrap_or_else(|_| reqwest::Client::new())
 }
 
-/// 从 toml::Table 中提取并反序列化指定 section
-fn extract<T: serde::de::DeserializeOwned>(table: &toml::Table, key: &str) -> crate::Result<T> {
-    table
-        .get(key)
-        .ok_or_else(|| crate::Error::custom(50001, format!("missing [{}]", key)))?
-        .clone()
-        .try_into()
-        .map_err(|e| crate::Error::custom(50001, format!("[{}] {}", key, e)))
-}
-
 #[cfg(feature = "clock")]
 pub mod clock;
 
@@ -265,9 +255,16 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(path: String) -> crate::Result<Self> {
-        let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
-            crate::Error::custom(50001, format!("Failed to read config '{}': {}", path, e))
-        })?;
+        let content = match tokio::fs::read_to_string(&path).await {
+            Ok(content) => content,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    format!("Failed to read config '{}': {}", path, error),
+                ));
+            }
+        };
         let table: toml::Table = toml::from_str(&content).map_err(|e| {
             crate::Error::custom(50001, format!("Failed to parse config.toml: {}", e))
         })?;
@@ -369,13 +366,63 @@ impl AppState {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct Backend {
     pub host: String,
     pub port: u16,
 }
 
+impl Default for Backend {
+    fn default() -> Self {
+        Self {
+            host: "0.0.0.0".to_owned(),
+            port: 6080,
+        }
+    }
+}
+
 impl Backend {
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        extract(table, "backend")
+        let map = table
+            .get("backend")
+            .and_then(|v| v.as_table())
+            .cloned()
+            .unwrap_or_default();
+        let backend = Backend {
+            host: match (map.get("host"), std::env::var("BACKEND_HOST")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[backend].host must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => "0.0.0.0".to_owned(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "BACKEND_HOST is not valid UTF-8",
+                    ));
+                }
+            },
+            port: match (map.get("port"), std::env::var("BACKEND_PORT")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid BACKEND_PORT: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[backend].port must be an integer")
+                    })?
+                    .try_into()
+                    .map_err(|_| crate::Error::custom(50001, "[backend].port is out of range"))?,
+                (None, Err(std::env::VarError::NotPresent)) => 6080,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "BACKEND_PORT is not valid UTF-8",
+                    ));
+                }
+            },
+        };
+        Ok(backend)
     }
 }

@@ -1,8 +1,6 @@
 pub mod err;
 use err::*;
 
-use serde::Deserialize;
-
 /// 对数据库密码中的特殊字符进行 percent-encoding
 /// RFC 3986: userinfo 中的 ':' 以及 '@' '/' '?' '#' 等必须编码
 #[cfg(any(feature = "db-postgres", feature = "db-mysql"))]
@@ -36,7 +34,7 @@ pub use sqlx::mysql::MySqlPool;
 // ═══════════════════════════════════════════════════════════════
 
 #[cfg(feature = "db-postgres")]
-#[derive(Clone, Deserialize)]
+#[derive(Clone)]
 pub struct PostgresConfig {
     pub host: String,
     pub port: u16,
@@ -46,13 +44,13 @@ pub struct PostgresConfig {
 }
 
 #[cfg(feature = "db-sqlite")]
-#[derive(Clone, Deserialize)]
+#[derive(Clone)]
 pub struct SqliteConfig {
     pub path: String,
 }
 
 #[cfg(feature = "db-mysql")]
-#[derive(Clone, Deserialize)]
+#[derive(Clone)]
 pub struct MysqlConfig {
     pub host: String,
     pub port: u16,
@@ -143,11 +141,204 @@ impl Database {
 
     pub async fn from_table(table: &toml::Table) -> crate::Result<Self> {
         #[cfg(feature = "db-postgres")]
-        let postgres: PostgresConfig = crate::state::extract(table, "postgres")?;
+        let postgres = {
+            let map = table
+                .get("postgres")
+                .and_then(toml::Value::as_table)
+                .cloned()
+                .unwrap_or_default();
+            PostgresConfig {
+                host: match (map.get("host"), std::env::var("POSTGRES_HOST")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[postgres].host must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => "127.0.0.1".to_owned(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "POSTGRES_HOST is not valid UTF-8",
+                        ));
+                    }
+                },
+                port: match (map.get("port"), std::env::var("POSTGRES_PORT")) {
+                    (_, Ok(value)) => value.parse().map_err(|error| {
+                        crate::Error::custom(50001, format!("Invalid POSTGRES_PORT: {error}"))
+                    })?,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_integer()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[postgres].port must be an integer")
+                        })?
+                        .try_into()
+                        .map_err(|_| {
+                            crate::Error::custom(50001, "[postgres].port is out of range")
+                        })?,
+                    (None, Err(std::env::VarError::NotPresent)) => 5432,
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "POSTGRES_PORT is not valid UTF-8",
+                        ));
+                    }
+                },
+                user: match (map.get("user"), std::env::var("POSTGRES_USER")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[postgres].user must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => "postgres".to_owned(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "POSTGRES_USER is not valid UTF-8",
+                        ));
+                    }
+                },
+                pass: match (map.get("pass"), std::env::var("POSTGRES_PASS")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[postgres].pass must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "POSTGRES_PASS is not valid UTF-8",
+                        ));
+                    }
+                },
+                name: match (map.get("name"), std::env::var("POSTGRES_NAME")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[postgres].name must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => "postgres".to_owned(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "POSTGRES_NAME is not valid UTF-8",
+                        ));
+                    }
+                },
+            }
+        };
         #[cfg(feature = "db-sqlite")]
-        let sqlite: SqliteConfig = crate::state::extract(table, "sqlite")?;
+        let sqlite = {
+            let map = table
+                .get("sqlite")
+                .and_then(toml::Value::as_table)
+                .cloned()
+                .unwrap_or_default();
+            SqliteConfig {
+                path: match (map.get("path"), std::env::var("SQLITE_PATH")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[sqlite].path must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "SQLITE_PATH is not valid UTF-8",
+                        ));
+                    }
+                },
+            }
+        };
         #[cfg(feature = "db-mysql")]
-        let mysql: MysqlConfig = crate::state::extract(table, "mysql")?;
+        let mysql = {
+            let map = table
+                .get("mysql")
+                .and_then(toml::Value::as_table)
+                .cloned()
+                .unwrap_or_default();
+            MysqlConfig {
+                host: match (map.get("host"), std::env::var("MYSQL_HOST")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[mysql].host must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => "127.0.0.1".to_owned(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(50001, "MYSQL_HOST is not valid UTF-8"));
+                    }
+                },
+                port: match (map.get("port"), std::env::var("MYSQL_PORT")) {
+                    (_, Ok(value)) => value.parse().map_err(|error| {
+                        crate::Error::custom(50001, format!("Invalid MYSQL_PORT: {error}"))
+                    })?,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_integer()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[mysql].port must be an integer")
+                        })?
+                        .try_into()
+                        .map_err(|_| crate::Error::custom(50001, "[mysql].port is out of range"))?,
+                    (None, Err(std::env::VarError::NotPresent)) => 3306,
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(50001, "MYSQL_PORT is not valid UTF-8"));
+                    }
+                },
+                user: match (map.get("user"), std::env::var("MYSQL_USER")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[mysql].user must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => "root".to_owned(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(50001, "MYSQL_USER is not valid UTF-8"));
+                    }
+                },
+                pass: match (map.get("pass"), std::env::var("MYSQL_PASS")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[mysql].pass must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(50001, "MYSQL_PASS is not valid UTF-8"));
+                    }
+                },
+                name: match (map.get("name"), std::env::var("MYSQL_NAME")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[mysql].name must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => "mysql".to_owned(),
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(50001, "MYSQL_NAME is not valid UTF-8"));
+                    }
+                },
+            }
+        };
 
         Self::connect(
             #[cfg(feature = "db-postgres")]
@@ -171,7 +362,7 @@ impl Database {
             config.port,
             config.name
         );
-        PgPool::connect(&url).await.map_err(|_e| {
+        PgPool::connect_lazy(&url).map_err(|_e| {
             #[cfg(feature = "log")]
             tracing::error!({ code = 50901, msg = "Database connection failed" }, "PostgreSQL: {}", _e);
             connect_failed("PostgreSQL")
@@ -186,7 +377,7 @@ impl Database {
         } else {
             format!("sqlite:{}?mode=rwc", config.path)
         };
-        SqlitePool::connect(&url).await.map_err(|_e| {
+        SqlitePool::connect_lazy(&url).map_err(|_e| {
             #[cfg(feature = "log")]
             tracing::error!({ code = 50901, msg = "Database open failed" }, "SQLite: {}", _e);
             connect_failed("SQLite")
@@ -204,7 +395,7 @@ impl Database {
             config.port,
             config.name
         );
-        MySqlPool::connect(&url).await.map_err(|_e| {
+        MySqlPool::connect_lazy(&url).map_err(|_e| {
             #[cfg(feature = "log")]
             tracing::error!({ code = 50901, msg = "Database connection failed" }, "MySQL: {}", _e);
             connect_failed("MySQL")

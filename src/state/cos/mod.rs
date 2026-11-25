@@ -18,6 +18,7 @@ fn default_url_expire() -> u64 {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct Cos {
     pub secret_id: String,
     pub secret_key: String,
@@ -31,6 +32,21 @@ pub struct Cos {
     pub url_expire: u64, // 签名 URL 有效期（秒）
     #[serde(skip)]
     pub client: reqwest::Client,
+}
+
+impl Default for Cos {
+    fn default() -> Self {
+        Self {
+            secret_id: String::new(),
+            secret_key: String::new(),
+            bucket: String::new(),
+            region: String::new(),
+            prefix: String::new(),
+            domain: String::new(),
+            url_expire: default_url_expire(),
+            client: reqwest::Client::new(),
+        }
+    }
 }
 
 type HmacSha1 = Hmac<Sha1>;
@@ -467,8 +483,128 @@ impl Cos {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "cos")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("cos")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let secret_id = match (map.get("secret_id"), std::env::var("COS_SECRET_ID")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[cos].secret_id must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [cos].secret_id or COS_SECRET_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "COS_SECRET_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let secret_key = match (map.get("secret_key"), std::env::var("COS_SECRET_KEY")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[cos].secret_key must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [cos].secret_key or COS_SECRET_KEY",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "COS_SECRET_KEY is not valid UTF-8",
+                ));
+            }
+        };
+        let bucket = match (map.get("bucket"), std::env::var("COS_BUCKET")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[cos].bucket must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [cos].bucket or COS_BUCKET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(50001, "COS_BUCKET is not valid UTF-8"));
+            }
+        };
+        let region = match (map.get("region"), std::env::var("COS_REGION")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[cos].region must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [cos].region or COS_REGION",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(50001, "COS_REGION is not valid UTF-8"));
+            }
+        };
+        Ok(Self {
+            secret_id,
+            secret_key,
+            bucket,
+            region,
+            prefix: match (map.get("prefix"), std::env::var("COS_PREFIX")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[cos].prefix must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(50001, "COS_PREFIX is not valid UTF-8"));
+                }
+            },
+            domain: match (map.get("domain"), std::env::var("COS_DOMAIN")) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| crate::Error::custom(50001, "[cos].domain must be a string"))?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => String::new(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(50001, "COS_DOMAIN is not valid UTF-8"));
+                }
+            },
+            url_expire: match (map.get("url_expire"), std::env::var("COS_URL_EXPIRE")) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid COS_URL_EXPIRE: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[cos].url_expire must be an integer")
+                    })?
+                    .try_into()
+                    .map_err(|_| crate::Error::custom(50001, "[cos].url_expire is out of range"))?,
+                (None, Err(std::env::VarError::NotPresent)) => default_url_expire(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "COS_URL_EXPIRE is not valid UTF-8",
+                    ));
+                }
+            },
+            client: super::default_http_client(),
+        })
     }
 }

@@ -9,6 +9,7 @@ use afastdata::AFastSerialize;
 
 /// HTTP 存储配置
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(default)]
 pub struct HttpTraceStoreConfig {
     /// 远程服务地址，如 "http://localhost:8080"
     pub url: String,
@@ -20,6 +21,17 @@ pub struct HttpTraceStoreConfig {
     /// 请求超时（秒），默认 5
     #[serde(default = "default_timeout")]
     pub timeout: u64,
+}
+
+impl Default for HttpTraceStoreConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            path: default_path(),
+            token: None,
+            timeout: default_timeout(),
+        }
+    }
 }
 
 fn default_path() -> String {

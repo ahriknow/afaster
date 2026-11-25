@@ -60,6 +60,7 @@ fn default_false_positive_rate() -> f64 {
 
 /// 布隆过滤器配置（对应 config.toml 的 `[bloom]`）
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct BloomFilterConfig {
     /// 预期存储的元素数量
     #[serde(default = "default_expected_items")]
@@ -145,12 +146,78 @@ impl BloomFilter {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let config: BloomFilterConfig = match table.get("bloom") {
-            Some(v) => v
-                .clone()
-                .try_into()
-                .map_err(|e| crate::Error::custom(50001, format!("[bloom] {}", e)))?,
-            None => BloomFilterConfig::default(),
+        let map = table
+            .get("bloom")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let config = BloomFilterConfig {
+            expected_items: match (
+                map.get("expected_items"),
+                std::env::var("BLOOM_EXPECTED_ITEMS"),
+            ) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(50001, format!("Invalid BLOOM_EXPECTED_ITEMS: {error}"))
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_integer()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[bloom].expected_items must be an integer")
+                    })?
+                    .try_into()
+                    .map_err(|_| {
+                        crate::Error::custom(50001, "[bloom].expected_items is out of range")
+                    })?,
+                (None, Err(std::env::VarError::NotPresent)) => default_expected_items(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "BLOOM_EXPECTED_ITEMS is not valid UTF-8",
+                    ));
+                }
+            },
+            false_positive_rate: match (
+                map.get("false_positive_rate"),
+                std::env::var("BLOOM_FALSE_POSITIVE_RATE"),
+            ) {
+                (_, Ok(value)) => value.parse().map_err(|error| {
+                    crate::Error::custom(
+                        50001,
+                        format!("Invalid BLOOM_FALSE_POSITIVE_RATE: {error}"),
+                    )
+                })?,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_float()
+                    .or_else(|| value.as_integer().map(|value| value as f64))
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[bloom].false_positive_rate must be numeric")
+                    })?,
+                (None, Err(std::env::VarError::NotPresent)) => default_false_positive_rate(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "BLOOM_FALSE_POSITIVE_RATE is not valid UTF-8",
+                    ));
+                }
+            },
+            auto_check_key: match (
+                map.get("auto_check_key"),
+                std::env::var("BLOOM_AUTO_CHECK_KEY"),
+            ) {
+                (_, Ok(value)) => Some(value),
+                (Some(value), Err(std::env::VarError::NotPresent)) => {
+                    value.as_str().map(str::to_owned).map(Some).ok_or_else(|| {
+                        crate::Error::custom(50001, "[bloom].auto_check_key must be a string")
+                    })?
+                }
+                (None, Err(std::env::VarError::NotPresent)) => None,
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "BLOOM_AUTO_CHECK_KEY is not valid UTF-8",
+                    ));
+                }
+            },
         };
         Ok(Self::from_config(&config))
     }

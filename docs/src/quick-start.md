@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.11", features = ["jwt", "log", "redis"] }
+afaster = { version = "0.0.12", features = ["jwt", "log", "redis"] }
 ```
 
 ## 配置
@@ -21,6 +21,16 @@ port = 6379
 ```
 
 ## 启动
+
+配置项也可以通过环境变量设置，且环境变量优先于同名 TOML 配置。例如可省略 `config.toml` 中的 `[backend]` 和 `[redis]`：
+
+```powershell
+$env:BACKEND_HOST = "0.0.0.0"
+$env:BACKEND_PORT = "5000"
+$env:REDIS_HOST = "127.0.0.1"
+```
+
+未提供必填字段时初始化会返回配置错误。所有变量名、必填项和默认值见[环境变量配置清单](./environment-variables.md)。
 
 ```rust
 use afaster::AFaster;

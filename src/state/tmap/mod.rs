@@ -17,6 +17,7 @@ const TMAP_BASE: &str = "https://apis.map.qq.com";
 ///
 /// API: https://lbs.qq.com/service/webService/webServiceGuide
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct Tmap {
     /// Web 服务 API Key
     pub key: String,
@@ -452,8 +453,30 @@ impl Tmap {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "tmap")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("tmap")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let key = match (map.get("key"), std::env::var("TMAP_KEY")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[tmap].key must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [tmap].key or TMAP_KEY",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(50001, "TMAP_KEY is not valid UTF-8"));
+            }
+        };
+        Ok(Self {
+            key,
+            client: super::default_http_client(),
+        })
     }
 }

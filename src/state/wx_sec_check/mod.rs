@@ -28,6 +28,7 @@ fn default_base_url() -> String {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct WxSecCheck {
     pub app_id: String,
     pub app_secret: String,
@@ -50,6 +51,22 @@ pub struct WxSecCheck {
     pub client: Client,
     #[serde(skip)]
     token: Arc<Mutex<Option<CachedToken>>>,
+}
+
+impl Default for WxSecCheck {
+    fn default() -> Self {
+        Self {
+            app_id: String::new(),
+            app_secret: String::new(),
+            base_url: default_base_url(),
+            callback_path: default_callback_path(),
+            verify_token: String::new(),
+            msg_secret: String::new(),
+            media_check_callback: None,
+            client: Client::new(),
+            token: Arc::new(Mutex::new(None)),
+        }
+    }
 }
 
 struct CachedToken {
@@ -726,8 +743,139 @@ impl WxSecCheck {
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "wx_sec_check")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("wx_sec_check")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let app_id = match (map.get("app_id"), std::env::var("WX_SEC_CHECK_APP_ID")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_sec_check].app_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [wx_sec_check].app_id or WX_SEC_CHECK_APP_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_SEC_CHECK_APP_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let app_secret = match (
+            map.get("app_secret"),
+            std::env::var("WX_SEC_CHECK_APP_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_sec_check].app_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [wx_sec_check].app_secret or WX_SEC_CHECK_APP_SECRET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_SEC_CHECK_APP_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        let base_url = match (map.get("base_url"), std::env::var("WX_SEC_CHECK_BASE_URL")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_sec_check].base_url must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_base_url(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_SEC_CHECK_BASE_URL is not valid UTF-8",
+                ));
+            }
+        };
+        let callback_path = match (
+            map.get("callback_path"),
+            std::env::var("WX_SEC_CHECK_CALLBACK_PATH"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_sec_check].callback_path must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_callback_path(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_SEC_CHECK_CALLBACK_PATH is not valid UTF-8",
+                ));
+            }
+        };
+        let verify_token = match (
+            map.get("verify_token"),
+            std::env::var("WX_SEC_CHECK_VERIFY_TOKEN"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_sec_check].verify_token must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_SEC_CHECK_VERIFY_TOKEN is not valid UTF-8",
+                ));
+            }
+        };
+        let msg_secret = match (
+            map.get("msg_secret"),
+            std::env::var("WX_SEC_CHECK_MSG_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[wx_sec_check].msg_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WX_SEC_CHECK_MSG_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        Ok(Self {
+            app_id,
+            app_secret,
+            base_url,
+            callback_path,
+            verify_token,
+            msg_secret,
+            media_check_callback: None,
+            client: super::default_http_client(),
+            token: Arc::new(Mutex::new(None)),
+        })
     }
 }

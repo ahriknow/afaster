@@ -30,6 +30,7 @@ const ALI_SMS_ENDPOINT: &str = "https://dysmsapi.aliyuncs.com/";
 /// 使用阿里云 RPC 签名 V1（HMAC-SHA1），与 STS 接口相同的签名方式。
 /// API: https://help.aliyun.com/zh/sms/developer-reference/api-dysmsapi-2017-05-25-sendsms
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct SmsAli {
     pub access_key_id: String,
     pub access_key_secret: String,
@@ -296,8 +297,119 @@ impl AFasterSmsAliExt for crate::AFaster {
 
 impl SmsAli {
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "sms_ali")?;
-        instance.client = super::default_http_client();
-        Ok(instance)
+        let map = table
+            .get("sms_ali")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let access_key_id = match (
+            map.get("access_key_id"),
+            std::env::var("SMS_ALI_ACCESS_KEY_ID"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_ali].access_key_id must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [sms_ali].access_key_id or SMS_ALI_ACCESS_KEY_ID",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_ALI_ACCESS_KEY_ID is not valid UTF-8",
+                ));
+            }
+        };
+        let access_key_secret = match (
+            map.get("access_key_secret"),
+            std::env::var("SMS_ALI_ACCESS_KEY_SECRET"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_ali].access_key_secret must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "missing required configuration [sms_ali].access_key_secret or SMS_ALI_ACCESS_KEY_SECRET",
+                ));
+            }
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_ALI_ACCESS_KEY_SECRET is not valid UTF-8",
+                ));
+            }
+        };
+        let sign_name = match (map.get("sign_name"), std::env::var("SMS_ALI_SIGN_NAME")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[sms_ali].sign_name must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_sign_name(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_ALI_SIGN_NAME is not valid UTF-8",
+                ));
+            }
+        };
+        let template_code = match (
+            map.get("template_code"),
+            std::env::var("SMS_ALI_TEMPLATE_CODE"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_ali].template_code must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => String::new(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_ALI_TEMPLATE_CODE is not valid UTF-8",
+                ));
+            }
+        };
+        let callback_path = match (
+            map.get("callback_path"),
+            std::env::var("SMS_ALI_CALLBACK_PATH"),
+        ) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| {
+                    crate::Error::custom(50001, "[sms_ali].callback_path must be a string")
+                })?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_callback_path(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "SMS_ALI_CALLBACK_PATH is not valid UTF-8",
+                ));
+            }
+        };
+        Ok(Self {
+            access_key_id,
+            access_key_secret,
+            sign_name,
+            template_code,
+            client: super::default_http_client(),
+            sms_report_callback: None,
+            callback_path,
+        })
     }
 }

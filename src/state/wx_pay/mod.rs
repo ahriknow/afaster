@@ -41,7 +41,8 @@ pub type RefundCallbackFn =
 /// 微信支付 V3 公共配置
 ///
 /// 各支付方式（H5/Native/APP）的 config 中嵌套此结构。
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Default)]
+#[serde(default)]
 pub struct WxPayConfig {
     /// 商户号
     pub mch_id: String,
@@ -77,6 +78,7 @@ pub struct WxPayRuntime {
 ///
 /// 支持 H5 / Native / APP 三种支付方式，通过 feature 控制。
 #[derive(Clone, Deserialize)]
+#[serde(default)]
 pub struct WxPay {
     #[serde(flatten)]
     pub config: WxPayConfig,
@@ -91,16 +93,229 @@ fn default_callback_path() -> String {
     "wx/pay/notify".to_string()
 }
 
+impl Default for WxPay {
+    fn default() -> Self {
+        Self {
+            config: WxPayConfig::default(),
+            callback_path: default_callback_path(),
+            runtime: WxPayRuntime::default(),
+        }
+    }
+}
+
 impl WxPay {
     /// 初始化运行时（加载私钥、创建 HTTP 客户端）
     pub fn init(&mut self) -> crate::Result<()> {
         self.runtime.client = super::default_http_client();
-        self.runtime.private_key_parsed = Some(load_private_key(&self.config.private_key)?);
+        self.runtime.private_key_parsed = if self.config.private_key.is_empty() {
+            None
+        } else {
+            Some(load_private_key(&self.config.private_key)?)
+        };
         Ok(())
     }
 
     pub fn from_table(table: &toml::Table) -> crate::Result<Self> {
-        let mut instance: Self = crate::state::extract(table, "wx_pay")?;
+        let map = table
+            .get("wx_pay")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default();
+        let mut instance = Self {
+            config: WxPayConfig {
+                mch_id: match (map.get("mch_id"), std::env::var("WX_PAY_MCH_ID")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[wx_pay].mch_id must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "missing required configuration [wx_pay].mch_id or WX_PAY_MCH_ID",
+                        ));
+                    }
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "WX_PAY_MCH_ID is not valid UTF-8",
+                        ));
+                    }
+                },
+                app_id: match (map.get("app_id"), std::env::var("WX_PAY_APP_ID")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[wx_pay].app_id must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "missing required configuration [wx_pay].app_id or WX_PAY_APP_ID",
+                        ));
+                    }
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "WX_PAY_APP_ID is not valid UTF-8",
+                        ));
+                    }
+                },
+                api_v3_key: match (map.get("api_v3_key"), std::env::var("WX_PAY_API_V3_KEY")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[wx_pay].api_v3_key must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "missing required configuration [wx_pay].api_v3_key or WX_PAY_API_V3_KEY",
+                        ));
+                    }
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "WX_PAY_API_V3_KEY is not valid UTF-8",
+                        ));
+                    }
+                },
+                private_key: match (map.get("private_key"), std::env::var("WX_PAY_PRIVATE_KEY")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[wx_pay].private_key must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "missing required configuration [wx_pay].private_key or WX_PAY_PRIVATE_KEY",
+                        ));
+                    }
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "WX_PAY_PRIVATE_KEY is not valid UTF-8",
+                        ));
+                    }
+                },
+                serial_no: match (map.get("serial_no"), std::env::var("WX_PAY_SERIAL_NO")) {
+                    (_, Ok(value)) => value,
+                    (Some(value), Err(std::env::VarError::NotPresent)) => value
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::custom(50001, "[wx_pay].serial_no must be a string")
+                        })?
+                        .to_owned(),
+                    (None, Err(std::env::VarError::NotPresent)) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "missing required configuration [wx_pay].serial_no or WX_PAY_SERIAL_NO",
+                        ));
+                    }
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "WX_PAY_SERIAL_NO is not valid UTF-8",
+                        ));
+                    }
+                },
+                notify_url: match (map.get("notify_url"), std::env::var("WX_PAY_NOTIFY_URL")) {
+                    (_, Ok(value)) => Some(value),
+                    (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                        value
+                            .as_str()
+                            .ok_or_else(|| {
+                                crate::Error::custom(50001, "[wx_pay].notify_url must be a string")
+                            })?
+                            .to_owned(),
+                    ),
+                    (None, Err(std::env::VarError::NotPresent)) => None,
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "WX_PAY_NOTIFY_URL is not valid UTF-8",
+                        ));
+                    }
+                },
+                refund_notify_url: match (
+                    map.get("refund_notify_url"),
+                    std::env::var("WX_PAY_REFUND_NOTIFY_URL"),
+                ) {
+                    (_, Ok(value)) => Some(value),
+                    (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                        value
+                            .as_str()
+                            .ok_or_else(|| {
+                                crate::Error::custom(
+                                    50001,
+                                    "[wx_pay].refund_notify_url must be a string",
+                                )
+                            })?
+                            .to_owned(),
+                    ),
+                    (None, Err(std::env::VarError::NotPresent)) => None,
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "WX_PAY_REFUND_NOTIFY_URL is not valid UTF-8",
+                        ));
+                    }
+                },
+                platform_cert: match (
+                    map.get("platform_cert"),
+                    std::env::var("WX_PAY_PLATFORM_CERT"),
+                ) {
+                    (_, Ok(value)) => Some(value),
+                    (Some(value), Err(std::env::VarError::NotPresent)) => Some(
+                        value
+                            .as_str()
+                            .ok_or_else(|| {
+                                crate::Error::custom(
+                                    50001,
+                                    "[wx_pay].platform_cert must be a string",
+                                )
+                            })?
+                            .to_owned(),
+                    ),
+                    (None, Err(std::env::VarError::NotPresent)) => None,
+                    (_, Err(std::env::VarError::NotUnicode(_))) => {
+                        return Err(crate::Error::custom(
+                            50001,
+                            "WX_PAY_PLATFORM_CERT is not valid UTF-8",
+                        ));
+                    }
+                },
+            },
+            callback_path: match (
+                map.get("callback_path"),
+                std::env::var("WX_PAY_CALLBACK_PATH"),
+            ) {
+                (_, Ok(value)) => value,
+                (Some(value), Err(std::env::VarError::NotPresent)) => value
+                    .as_str()
+                    .ok_or_else(|| {
+                        crate::Error::custom(50001, "[wx_pay].callback_path must be a string")
+                    })?
+                    .to_owned(),
+                (None, Err(std::env::VarError::NotPresent)) => default_callback_path(),
+                (_, Err(std::env::VarError::NotUnicode(_))) => {
+                    return Err(crate::Error::custom(
+                        50001,
+                        "WX_PAY_CALLBACK_PATH is not valid UTF-8",
+                    ));
+                }
+            },
+            runtime: WxPayRuntime::default(),
+        };
         instance.init()?;
         Ok(instance)
     }
