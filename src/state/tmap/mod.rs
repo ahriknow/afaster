@@ -98,14 +98,19 @@ impl Tmap {
             .await
             .map_err(|e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 51401, msg = "TMap request failed" }, "{}", e);
-                request_failed(&e.to_string())
+                let detail = crate::state::log_request_error(e, 51401, "TMap request failed");
+                #[cfg(not(feature = "log"))]
+                let detail = e.to_string();
+                request_failed(&detail)
             })?;
 
         let text = resp.text().await.map_err(|e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 51402, msg = "TMap response read failed" }, "{}", e);
-            response_parse_failed(&e.to_string())
+            let detail =
+                crate::state::log_request_error(e, 51402, "TMap response body read failed");
+            #[cfg(not(feature = "log"))]
+            let detail = e.to_string();
+            response_parse_failed(&detail)
         })?;
 
         let tmap_resp: TmapResponse = serde_json::from_str(&text).map_err(|e| {

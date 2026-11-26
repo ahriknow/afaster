@@ -5,7 +5,7 @@ Feature: `wx-cloudrun`
 云托管开放接口服务通过旁加载代理微信 API，并负责鉴权。服务端请求 `api.weixin.qq.com` 时不需要自行读取、存储或传递 `access_token` / `cloudbase_access_token`。
 
 ```toml
-afaster = { version = "0.0.13", default-features = false, features = ["wx-cloudrun"] }
+afaster = { version = "0.0.0", default-features = false, features = ["wx-cloudrun"] }
 ```
 
 Configure the CloudBase environment once in `config.toml`. The prefix is prepended to upload paths; `url_expire` sets temporary download URL validity in seconds (1–604800, default 3600).

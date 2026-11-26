@@ -405,14 +405,15 @@ impl JPush {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52601, msg = "JPush push error" }, "{}", _e);
+                let _ = crate::state::log_request_error(_e, 52601, "JPush push request failed");
                 crate::Error::custom(52601, "JPush push request failed")
             })?;
 
         let status = resp.status();
         let resp_text = resp.text().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 52602, msg = "JPush push error" }, "{}", _e);
+            let _ =
+                crate::state::log_request_error(_e, 52602, "JPush push response body read failed");
             crate::Error::custom(52602, "JPush push response read failed")
         })?;
 

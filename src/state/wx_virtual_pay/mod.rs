@@ -132,9 +132,10 @@ impl WxVirtualPay {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!(
-                    { code = 50602, msg = "WeChat virtual pay login error" },
-                    "{}", _e
+                let _ = crate::state::log_request_error(
+                    _e,
+                    50602,
+                    "WeChat virtual pay login request failed",
                 );
                 login_request()
             })?
@@ -142,9 +143,10 @@ impl WxVirtualPay {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!(
-                    { code = 50603, msg = "WeChat virtual pay login error" },
-                    "{}", _e
+                let _ = crate::state::log_request_error(
+                    _e,
+                    50603,
+                    "WeChat virtual pay login response parse failed",
                 );
                 login_response()
             })?;

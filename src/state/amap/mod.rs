@@ -129,14 +129,19 @@ impl Amap {
             .await
             .map_err(|e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 51301, msg = "AMap request failed" }, "{}", e);
-                request_failed(&e.to_string())
+                let detail = crate::state::log_request_error(e, 51301, "AMap request failed");
+                #[cfg(not(feature = "log"))]
+                let detail = e.to_string();
+                request_failed(&detail)
             })?;
 
         let text = resp.text().await.map_err(|e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 51302, msg = "AMap response read failed" }, "{}", e);
-            response_parse_failed(&e.to_string())
+            let detail =
+                crate::state::log_request_error(e, 51302, "AMap response body read failed");
+            #[cfg(not(feature = "log"))]
+            let detail = e.to_string();
+            response_parse_failed(&detail)
         })?;
 
         let amap_resp: AmapResponse = serde_json::from_str(&text).map_err(|e| {

@@ -679,14 +679,18 @@ pub async fn send_v3_request(
     }
     req.send().await.map_err(|_e| {
         #[cfg(feature = "log")]
-        tracing::error!("WxPay request failed: {}", _e);
+        let _ = crate::state::log_request_error(_e, 50903, "WxPay request failed");
         request_failed("")
     })
 }
 
 /// 处理非 2xx 响应
 pub async fn handle_error_response(resp: reqwest::Response, context: &str) -> crate::Error {
-    let err_body: serde_json::Value = resp.json().await.unwrap_or_default();
+    let err_body: serde_json::Value = resp.json().await.unwrap_or_else(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50908, "WxPay API error response parse failed");
+        serde_json::Value::default()
+    });
     let code = err_body
         .get("code")
         .and_then(|v| v.as_str())
@@ -728,7 +732,11 @@ pub async fn query_by_out_trade_no(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "query_order").await);
     }
-    resp.json().await.map_err(|_e| query_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50906, "WxPay order response parse failed");
+        query_response("")
+    })
 }
 
 pub async fn query_by_transaction_id(
@@ -755,7 +763,11 @@ pub async fn query_by_transaction_id(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "query_order").await);
     }
-    resp.json().await.map_err(|_e| query_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50906, "WxPay order response parse failed");
+        query_response("")
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -827,7 +839,11 @@ pub async fn refund(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "refund").await);
     }
-    resp.json().await.map_err(|_e| refund_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50907, "WxPay refund response parse failed");
+        refund_response("")
+    })
 }
 
 pub async fn query_refund(
@@ -851,7 +867,11 @@ pub async fn query_refund(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "query_refund").await);
     }
-    resp.json().await.map_err(|_e| refund_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50907, "WxPay refund response parse failed");
+        refund_response("")
+    })
 }
 
 pub async fn apply_abnormal_refund(
@@ -881,7 +901,11 @@ pub async fn apply_abnormal_refund(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "apply_abnormal_refund").await);
     }
-    resp.json().await.map_err(|_e| refund_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50907, "WxPay refund response parse failed");
+        refund_response("")
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -913,7 +937,11 @@ pub async fn apply_trade_bill(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "apply_trade_bill").await);
     }
-    resp.json().await.map_err(|_e| bill_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50908, "WxPay bill response parse failed");
+        bill_response("")
+    })
 }
 
 pub async fn apply_fund_flow_bill(
@@ -941,7 +969,11 @@ pub async fn apply_fund_flow_bill(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "apply_fund_flow_bill").await);
     }
-    resp.json().await.map_err(|_e| bill_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50908, "WxPay bill response parse failed");
+        bill_response("")
+    })
 }
 
 pub async fn download_bill(
@@ -965,11 +997,20 @@ pub async fn download_bill(
         .header("Accept", "application/json")
         .send()
         .await
-        .map_err(|_e| request_failed(""))?;
+        .map_err(|_e| {
+            #[cfg(feature = "log")]
+            let _ =
+                crate::state::log_request_error(_e, 50903, "WxPay bill download request failed");
+            request_failed("")
+        })?;
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "download_bill").await);
     }
-    resp.text().await.map_err(|_e| bill_response(""))
+    resp.text().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50908, "WxPay bill response read failed");
+        bill_response("")
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1305,7 +1346,11 @@ pub async fn prepay_h5(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "prepay_h5").await);
     }
-    resp.json().await.map_err(|_e| prepay_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50905, "WxPay prepay response parse failed");
+        prepay_response("")
+    })
 }
 
 /// Native 预下单
@@ -1347,7 +1392,11 @@ pub async fn prepay_native(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "prepay_native").await);
     }
-    resp.json().await.map_err(|_e| prepay_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50905, "WxPay prepay response parse failed");
+        prepay_response("")
+    })
 }
 
 /// APP 预下单
@@ -1389,7 +1438,11 @@ pub async fn prepay_app(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "prepay_app").await);
     }
-    resp.json().await.map_err(|_e| prepay_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50905, "WxPay prepay response parse failed");
+        prepay_response("")
+    })
 }
 
 /// 小程序/JSAPI 预下单
@@ -1435,7 +1488,11 @@ pub async fn prepay_js_mini(
     if !resp.status().is_success() {
         return Err(handle_error_response(resp, "prepay_js_mini").await);
     }
-    resp.json().await.map_err(|_e| prepay_response(""))
+    resp.json().await.map_err(|_e| {
+        #[cfg(feature = "log")]
+        let _ = crate::state::log_request_error(_e, 50905, "WxPay prepay response parse failed");
+        prepay_response("")
+    })
 }
 
 // ═══════════════════════════════════════════════════════════════

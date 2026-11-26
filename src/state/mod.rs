@@ -2,6 +2,37 @@ mod callbacks;
 
 use serde::Deserialize;
 
+#[cfg(all(
+    feature = "log",
+    any(
+        feature = "wx-login-mini",
+        feature = "wx-login-app",
+        feature = "wx-login-web",
+        feature = "wx-cloudrun",
+        feature = "wx-official",
+        feature = "oss",
+        feature = "cos",
+        feature = "wx-virtual-pay",
+        feature = "github-oauth2",
+        feature = "wx-sec-check",
+        feature = "wx-pay-h5",
+        feature = "sms-ali",
+        feature = "sms-tencent",
+        feature = "amap",
+        feature = "tmap",
+        feature = "push-getui",
+        feature = "push-jpush",
+        feature = "push-xiaomi",
+        feature = "ali-pay-web",
+        feature = "trace-http"
+    )
+))]
+pub(crate) fn log_request_error(error: reqwest::Error, code: u32, message: &'static str) -> String {
+    let error = error.without_url();
+    tracing::error!(code, error = ?error, "{message}");
+    format!("{error:?}")
+}
+
 /// 创建带默认超时的 reqwest HTTP 客户端
 ///
 /// - 连接超时: 10 秒

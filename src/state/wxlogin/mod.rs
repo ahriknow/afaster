@@ -11,6 +11,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+#[cfg(feature = "log")]
+use super::log_request_error;
+
 #[cfg(feature = "wx-login-web")]
 use crate::state::callbacks::IntoCallback;
 
@@ -170,10 +173,18 @@ impl WxLogin {
             .get(url)
             .send()
             .await
-            .map_err(|_| mini_phone_token_request())?
+            .map_err(|_e| {
+                #[cfg(feature = "log")]
+                log_request_error(_e, 50206, "WeChat mini access token request failed");
+                mini_phone_token_request()
+            })?
             .json::<WxMiniAccessTokenResponse>()
             .await
-            .map_err(|_| mini_phone_token_response())?;
+            .map_err(|_e| {
+                #[cfg(feature = "log")]
+                log_request_error(_e, 50207, "WeChat mini access token response parse failed");
+                mini_phone_token_response()
+            })?;
         if response.errcode.unwrap_or_default() != 0 {
             return Err(mini_api(
                 response
@@ -227,14 +238,14 @@ impl WxLogin {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 50202, msg = "WeChat mini login error" },  "{}", _e);
+                log_request_error(_e, 50202, "WeChat mini login request failed");
                 mini_request()
             })?
             .json::<serde_json::Value>()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 50203, msg = "WeChat mini login error" },  "{}", _e);
+                log_request_error(_e, 50203, "WeChat mini login response parse failed");
                 mini_response()
             })?;
 
@@ -276,10 +287,18 @@ impl WxLogin {
             .json(&serde_json::json!({ "code": code }))
             .send()
             .await
-            .map_err(|_| mini_phone_request())?
+            .map_err(|_e| {
+                #[cfg(feature = "log")]
+                log_request_error(_e, 50208, "WeChat mini phone number request failed");
+                mini_phone_request()
+            })?
             .json::<WxMiniPhoneNumberResponse>()
             .await
-            .map_err(|_| mini_phone_response())?;
+            .map_err(|_e| {
+                #[cfg(feature = "log")]
+                log_request_error(_e, 50209, "WeChat mini phone number response parse failed");
+                mini_phone_response()
+            })?;
         if response.errcode.unwrap_or_default() != 0 {
             return Err(mini_api(
                 response
@@ -320,14 +339,14 @@ impl WxLogin {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 50302, msg = "WeChat APP login error" },  "{}", _e);
+                log_request_error(_e, 50302, "WeChat app login request failed");
                 app_request()
             })?
             .json::<serde_json::Value>()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 50303, msg = "WeChat APP login error" },  "{}", _e);
+                log_request_error(_e, 50303, "WeChat app login response parse failed");
                 app_response()
             })?;
 
@@ -420,14 +439,14 @@ impl WxLogin {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52102, msg = "WeChat web login error" }, "{}", _e);
+                log_request_error(_e, 52102, "WeChat web login request failed");
                 web_request()
             })?
             .json::<serde_json::Value>()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52103, msg = "WeChat web login error" }, "{}", _e);
+                log_request_error(_e, 52103, "WeChat web login response parse failed");
                 web_response()
             })?;
 
@@ -486,14 +505,14 @@ impl WxLogin {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52105, msg = "WeChat web refresh token error" }, "{}", _e);
+                log_request_error(_e, 52105, "WeChat web refresh token request failed");
                 web_refresh_request()
             })?
             .json::<serde_json::Value>()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52106, msg = "WeChat web refresh token error" }, "{}", _e);
+                log_request_error(_e, 52106, "WeChat web refresh token response parse failed");
                 web_refresh_response()
             })?;
 
@@ -545,14 +564,14 @@ impl WxLogin {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52107, msg = "WeChat web check token error" }, "{}", _e);
+                log_request_error(_e, 52107, "WeChat web check token request failed");
                 web_check_request()
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52108, msg = "WeChat web check token error" }, "{}", _e);
+                log_request_error(_e, 52108, "WeChat web check token response parse failed");
                 web_check_response()
             })?;
 
@@ -599,14 +618,14 @@ impl WxLogin {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52109, msg = "WeChat web userinfo error" }, "{}", _e);
+                log_request_error(_e, 52109, "WeChat web userinfo request failed");
                 web_userinfo_request()
             })?
             .json::<serde_json::Value>()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52110, msg = "WeChat web userinfo error" }, "{}", _e);
+                log_request_error(_e, 52110, "WeChat web userinfo response parse failed");
                 web_userinfo_response()
             })?;
 

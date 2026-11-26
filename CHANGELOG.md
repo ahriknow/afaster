@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.14]
+
+### Changed
+
+- **HTTP Logging**: Route `reqwest` request, response-body, and JSON decoding errors across state modules through the shared logger when the `log` feature is enabled, including debug details without logging URLs.
+
 ## [0.0.13]
 
 - **WeChat Cloud Run**: Add the `wx-cloudrun` feature and `WxCloudRun` state module for configured upload prefixes and temporary upload/download links through OpenAPI without handling access tokens.

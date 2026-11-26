@@ -399,13 +399,15 @@ impl WxSecCheck {
 
         let resp = self.client.get(url).send().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50705, msg = "Failed to get access_token" }, "{}", _e);
+            let _ =
+                crate::state::log_request_error(_e, 50705, "Failed to get access_token request");
             token()
         })?;
 
         let body: serde_json::Value = resp.json().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50706, msg = "Access_token response parse failed" }, "{}", _e);
+            let _ =
+                crate::state::log_request_error(_e, 50706, "Access_token response parse failed");
             token_parse()
         })?;
 
@@ -510,13 +512,21 @@ impl WxSecCheck {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 50702, msg = "Request failed" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    50702,
+                    "WeChat security check request failed",
+                );
                 err::request()
             })?;
 
         let body: serde_json::Value = resp.json().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50703, msg = "Response JSON parse failed" }, "{}", _e);
+            let _ = crate::state::log_request_error(
+                _e,
+                50703,
+                "WeChat security check response parse failed",
+            );
             err::response()
         })?;
 
@@ -546,12 +556,20 @@ impl WxSecCheck {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 50702, msg = "Request failed" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            50702,
+                            "WeChat security check request failed",
+                        );
                         err::request()
                     })?;
                 let body2: serde_json::Value = resp2.json().await.map_err(|_e| {
                     #[cfg(feature = "log")]
-                    tracing::error!({ code = 50703, msg = "Response JSON parse failed" }, "{}", _e);
+                    let _ = crate::state::log_request_error(
+                        _e,
+                        50703,
+                        "WeChat security check response parse failed",
+                    );
                     err::response()
                 })?;
                 let result: MsgSecCheckResponse = serde_json::from_value(body2)
@@ -608,13 +626,18 @@ impl WxSecCheck {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 50702, msg = "Request failed" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 50702, "WeChat media check request failed");
                 err::request()
             })?;
 
         let body: serde_json::Value = resp.json().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50703, msg = "Response JSON parse failed" }, "{}", _e);
+            let _ = crate::state::log_request_error(
+                _e,
+                50703,
+                "WeChat media check response parse failed",
+            );
             err::response()
         })?;
 
@@ -644,12 +667,20 @@ impl WxSecCheck {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 50702, msg = "Request failed" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            50702,
+                            "WeChat media check request failed",
+                        );
                         err::request()
                     })?;
                 let body2: serde_json::Value = resp2.json().await.map_err(|_e| {
                     #[cfg(feature = "log")]
-                    tracing::error!({ code = 50703, msg = "Response JSON parse failed" }, "{}", _e);
+                    let _ = crate::state::log_request_error(
+                        _e,
+                        50703,
+                        "WeChat media check response parse failed",
+                    );
                     err::response()
                 })?;
                 let result: MediaCheckResponse = serde_json::from_value(body2)

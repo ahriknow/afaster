@@ -117,16 +117,38 @@ impl WxCloudRun {
             })
             .send()
             .await
-            .map_err(|_| err::upload_link_request_failed())?;
+            .map_err(|_error| {
+                #[cfg(feature = "log")]
+                let _ = crate::state::log_request_error(
+                    _error,
+                    53101,
+                    "CloudBase upload-link request failed",
+                );
+                err::upload_link_request_failed()
+            })?;
 
         if !response.status().is_success() {
+            #[cfg(feature = "log")]
+            tracing::error!(
+                code = 53101,
+                http_status = %response.status(),
+                "CloudBase upload-link request returned an error status"
+            );
             return Err(err::upload_link_request_failed());
         }
         let openapi_seqid = openapi_seqid(&response);
         let response = response
             .json::<UploadLinkResponse>()
             .await
-            .map_err(|_| err::upload_link_response_invalid())?;
+            .map_err(|_error| {
+                #[cfg(feature = "log")]
+                let _ = crate::state::log_request_error(
+                    _error,
+                    53102,
+                    "CloudBase upload-link response parse failed",
+                );
+                err::upload_link_response_invalid()
+            })?;
 
         if response.errcode != 0 {
             return Err(err::cloud_call_rejected(response.errcode));
@@ -163,16 +185,38 @@ impl WxCloudRun {
             })
             .send()
             .await
-            .map_err(|_| err::download_link_request_failed())?;
+            .map_err(|_error| {
+                #[cfg(feature = "log")]
+                let _ = crate::state::log_request_error(
+                    _error,
+                    53108,
+                    "CloudBase temporary-download request failed",
+                );
+                err::download_link_request_failed()
+            })?;
 
         if !response.status().is_success() {
+            #[cfg(feature = "log")]
+            tracing::error!(
+                code = 53108,
+                http_status = %response.status(),
+                "CloudBase temporary-download request returned an error status"
+            );
             return Err(err::download_link_request_failed());
         }
         let openapi_seqid = openapi_seqid(&response);
         let response = response
             .json::<DownloadLinkResponse>()
             .await
-            .map_err(|_| err::download_link_response_invalid())?;
+            .map_err(|_error| {
+                #[cfg(feature = "log")]
+                let _ = crate::state::log_request_error(
+                    _error,
+                    53109,
+                    "CloudBase temporary-download response parse failed",
+                );
+                err::download_link_response_invalid()
+            })?;
 
         if response.errcode != 0 {
             return Err(err::cloud_call_rejected(response.errcode));

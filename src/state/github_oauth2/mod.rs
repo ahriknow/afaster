@@ -317,18 +317,20 @@ impl GitHubOAuth2 {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!(
-                    { code = 50501, msg = "GitHub OAuth2 error: Token request failed" },
-                    "{}", _e
+                let _ = crate::state::log_request_error(
+                    _e,
+                    50501,
+                    "GitHub OAuth2 token request failed",
                 );
                 exchange_request()
             })?;
 
         let token_response: GitHubTokenResponse = response.json().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!(
-                { code = 50502, msg = "GitHub OAuth2 error: Token response parse failed" },
-                "{}", _e
+            let _ = crate::state::log_request_error(
+                _e,
+                50502,
+                "GitHub OAuth2 token response parse failed",
             );
             exchange_parse()
         })?;
@@ -365,18 +367,20 @@ impl GitHubOAuth2 {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!(
-                    { code = 50503, msg = "GitHub OAuth2 error: Failed to get user info" },
-                    "{}", _e
+                let _ = crate::state::log_request_error(
+                    _e,
+                    50503,
+                    "GitHub OAuth2 user info request failed",
                 );
                 user_request()
             })?;
 
         let user: GitHubUser = response.json().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!(
-                { code = 50504, msg = "GitHub OAuth2 error: User info parse failed" },
-                "{}", _e
+            let _ = crate::state::log_request_error(
+                _e,
+                50504,
+                "GitHub OAuth2 user info response parse failed",
             );
             user_parse()
         })?;
@@ -402,18 +406,20 @@ impl GitHubOAuth2 {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!(
-                    { code = 50505, msg = "GitHub OAuth2 error: Failed to get user email" },
-                    "{}", _e
+                let _ = crate::state::log_request_error(
+                    _e,
+                    50505,
+                    "GitHub OAuth2 user email request failed",
                 );
                 email_request()
             })?;
 
         let emails: Vec<GitHubEmail> = response.json().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!(
-                { code = 50506, msg = "GitHub OAuth2 error: User email parse failed" },
-                "{}", _e
+            let _ = crate::state::log_request_error(
+                _e,
+                50506,
+                "GitHub OAuth2 user email response parse failed",
             );
             email_parse()
         })?;

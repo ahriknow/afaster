@@ -283,14 +283,15 @@ impl GeTui {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52501, msg = "GeTui auth error" }, "{}", _e);
+                let _ = crate::state::log_request_error(_e, 52501, "GeTui auth request failed");
                 crate::Error::custom(52501, "GeTui auth request failed")
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52502, msg = "GeTui auth error" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 52502, "GeTui auth response parse failed");
                 crate::Error::custom(52502, "GeTui auth response parse failed")
             })?;
 
@@ -412,14 +413,22 @@ impl GeTui {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52503, msg = "GeTui create list message error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52503,
+                    "GeTui create list message request failed",
+                );
                 crate::Error::custom(52503, "GeTui create list message request failed")
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52504, msg = "GeTui create list message error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52504,
+                    "GeTui create list message response parse failed",
+                );
                 crate::Error::custom(52504, "GeTui create list message response parse failed")
             })?;
 
@@ -462,14 +471,19 @@ impl GeTui {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52503, msg = "GeTui list push error" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 52503, "GeTui list push request failed");
                 crate::Error::custom(52503, "GeTui list push request failed")
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52504, msg = "GeTui list push error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52504,
+                    "GeTui list push response parse failed",
+                );
                 crate::Error::custom(52504, "GeTui list push response parse failed")
             })?;
 
@@ -504,14 +518,19 @@ impl GeTui {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52503, msg = "GeTui list push error" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 52503, "GeTui list push request failed");
                 crate::Error::custom(52503, "GeTui list push request failed")
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52504, msg = "GeTui list push error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52504,
+                    "GeTui list push response parse failed",
+                );
                 crate::Error::custom(52504, "GeTui list push response parse failed")
             })?;
 
@@ -741,14 +760,15 @@ impl GeTui {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52503, msg = "GeTui push error" }, "{}", _e);
+                let _ = crate::state::log_request_error(_e, 52503, "GeTui push request failed");
                 crate::Error::custom(52503, "GeTui push request failed")
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52504, msg = "GeTui push error" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 52504, "GeTui push response parse failed");
                 crate::Error::custom(52504, "GeTui push response parse failed")
             })?;
 
@@ -777,14 +797,19 @@ impl GeTui {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52503, msg = "GeTui batch push error" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 52503, "GeTui batch push request failed");
                 crate::Error::custom(52503, "GeTui batch push request failed")
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52504, msg = "GeTui batch push error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52504,
+                    "GeTui batch push response parse failed",
+                );
                 crate::Error::custom(52504, "GeTui batch push response parse failed")
             })?;
 

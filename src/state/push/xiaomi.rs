@@ -365,14 +365,15 @@ impl XiaomiPush {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52701, msg = "Xiaomi push error" }, "{}", _e);
+                let _ = crate::state::log_request_error(_e, 52701, "Xiaomi push request failed");
                 crate::Error::custom(52701, "Xiaomi push request failed")
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52702, msg = "Xiaomi push error" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 52702, "Xiaomi push response parse failed");
                 crate::Error::custom(52702, "Xiaomi push response parse failed")
             })?;
 

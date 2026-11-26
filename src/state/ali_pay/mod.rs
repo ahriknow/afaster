@@ -501,12 +501,21 @@ async fn call_api<T: for<'de> Deserialize<'de>>(
         .form(&form)
         .send()
         .await
-        .map_err(|e| err::request_failed(&format!("{}", e)))?;
+        .map_err(|e| {
+            #[cfg(feature = "log")]
+            let detail = crate::state::log_request_error(e, 52605, "AliPay request failed");
+            #[cfg(not(feature = "log"))]
+            let detail = e.to_string();
+            err::request_failed(&detail)
+        })?;
 
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| err::response_parse_failed(&format!("read body: {}", e)))?;
+    let body = resp.text().await.map_err(|e| {
+        #[cfg(feature = "log")]
+        let detail = crate::state::log_request_error(e, 52606, "AliPay response body read failed");
+        #[cfg(not(feature = "log"))]
+        let detail = format!("read body: {e}");
+        err::response_parse_failed(&detail)
+    })?;
 
     let outer: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| err::response_parse_failed(&format!("JSON parse: {}", e)))?;

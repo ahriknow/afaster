@@ -193,14 +193,20 @@ impl SmsAli {
             .await
             .map_err(|e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 51103, msg = "Alibaba SMS request failed" }, "{}", e);
-                request_failed(&e.to_string())
+                let detail =
+                    crate::state::log_request_error(e, 51103, "Alibaba SMS request failed");
+                #[cfg(not(feature = "log"))]
+                let detail = e.to_string();
+                request_failed(&detail)
             })?;
 
         let text = resp.text().await.map_err(|e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 51104, msg = "Alibaba SMS response read failed" }, "{}", e);
-            response_parse_failed(&e.to_string())
+            let detail =
+                crate::state::log_request_error(e, 51104, "Alibaba SMS response body read failed");
+            #[cfg(not(feature = "log"))]
+            let detail = e.to_string();
+            response_parse_failed(&detail)
         })?;
 
         let sms_resp: AliSmsResponse = serde_json::from_str(&text).map_err(|e| {

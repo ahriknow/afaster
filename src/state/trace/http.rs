@@ -77,10 +77,13 @@ impl HttpTraceStore {
         if let Some(ref token) = self.config.token {
             req = req.bearer_auth(token);
         }
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| err::http_request_failed(&format!("POST: {}", e)))?;
+        let resp = req.send().await.map_err(|e| {
+            #[cfg(feature = "log")]
+            let detail = crate::state::log_request_error(e, 53005, "Tracing HTTP request failed");
+            #[cfg(not(feature = "log"))]
+            let detail = e.to_string();
+            err::http_request_failed(&format!("POST: {detail}"))
+        })?;
 
         if !resp.status().is_success() {
             return Err(err::http_request_failed(&format!(

@@ -135,14 +135,22 @@ impl WxOfficial {
                 .await
                 .map_err(|_e| {
                     #[cfg(feature = "log")]
-                    tracing::error!({ code = 52301, msg = "access_token error" }, "{}", _e);
+                    let _ = crate::state::log_request_error(
+                        _e,
+                        52301,
+                        "WeChat access token request failed",
+                    );
                     token_request()
                 })?
                 .json()
                 .await
                 .map_err(|_e| {
                     #[cfg(feature = "log")]
-                    tracing::error!({ code = 52302, msg = "access_token error" }, "{}", _e);
+                    let _ = crate::state::log_request_error(
+                        _e,
+                        52302,
+                        "WeChat access token response parse failed",
+                    );
                     token_response()
                 })?
         } else {
@@ -153,14 +161,22 @@ impl WxOfficial {
                 .await
                 .map_err(|_e| {
                     #[cfg(feature = "log")]
-                    tracing::error!({ code = 52301, msg = "access_token error" }, "{}", _e);
+                    let _ = crate::state::log_request_error(
+                        _e,
+                        52301,
+                        "WeChat access token request failed",
+                    );
                     token_request()
                 })?
                 .json()
                 .await
                 .map_err(|_e| {
                     #[cfg(feature = "log")]
-                    tracing::error!({ code = 52302, msg = "access_token error" }, "{}", _e);
+                    let _ = crate::state::log_request_error(
+                        _e,
+                        52302,
+                        "WeChat access token response parse failed",
+                    );
                     token_response()
                 })?
         };
@@ -261,22 +277,30 @@ impl WxOfficial {
                         body["miniprogram"] = mp;
                     }
                     let resp: serde_json::Value = client
-                    .post(&api_url)
-                    .json(&body)
-                    .send()
-                    .await
-                    .map_err(|_e| {
-                        #[cfg(feature = "log")]
-                        tracing::error!({ code = 52303, msg = "template send error" }, "{}", _e);
-                        template_send_request()
-                    })?
-                    .json()
-                    .await
-                    .map_err(|_e| {
-                        #[cfg(feature = "log")]
-                        tracing::error!({ code = 52304, msg = "template send error" }, "{}", _e);
-                        template_send_response()
-                    })?;
+                        .post(&api_url)
+                        .json(&body)
+                        .send()
+                        .await
+                        .map_err(|_e| {
+                            #[cfg(feature = "log")]
+                            let _ = crate::state::log_request_error(
+                                _e,
+                                52303,
+                                "WeChat template message request failed",
+                            );
+                            template_send_request()
+                        })?
+                        .json()
+                        .await
+                        .map_err(|_e| {
+                            #[cfg(feature = "log")]
+                            let _ = crate::state::log_request_error(
+                                _e,
+                                52304,
+                                "WeChat template message response parse failed",
+                            );
+                            template_send_response()
+                        })?;
                     check_error(&resp)?;
                     Ok(resp)
                 }
@@ -308,14 +332,22 @@ impl WxOfficial {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52305, msg = "menu create error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52305,
+                            "WeChat menu create request failed",
+                        );
                         menu_create_request()
                     })?
                     .json()
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52306, msg = "menu create error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52306,
+                            "WeChat menu create response parse failed",
+                        );
                         menu_response()
                     })?;
                 check_error(&resp)?;
@@ -341,14 +373,22 @@ impl WxOfficial {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52310, msg = "menu get error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52310,
+                            "WeChat menu get request failed",
+                        );
                         menu_get_request()
                     })?
                     .json()
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52306, msg = "menu get error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52306,
+                            "WeChat menu get response parse failed",
+                        );
                         menu_response()
                     })?;
                 check_error(&resp)?;
@@ -376,14 +416,22 @@ impl WxOfficial {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52310, msg = "selfmenu info error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52310,
+                            "WeChat selfmenu info request failed",
+                        );
                         menu_get_request()
                     })?
                     .json()
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52306, msg = "selfmenu info error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52306,
+                            "WeChat selfmenu info response parse failed",
+                        );
                         menu_response()
                     })?;
                 check_error(&resp)?;
@@ -408,14 +456,22 @@ impl WxOfficial {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52307, msg = "menu delete error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52307,
+                            "WeChat menu delete request failed",
+                        );
                         menu_delete_request()
                     })?
                     .json()
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52306, msg = "menu delete error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52306,
+                            "WeChat menu delete response parse failed",
+                        );
                         menu_response()
                     })?;
                 check_error(&resp)?;
@@ -434,23 +490,47 @@ impl WxOfficial {
     ) -> crate::Result<String> {
         let base_url = self.base_url.clone();
         let client = self.client.clone();
-        let resp = self.do_api(move |token| {
-            let base_url = base_url.clone();
-            let client = client.clone();
-            let buttons = buttons.clone();
-            let matchrule = matchrule.clone();
-            async move {
-                let url = format!("{}/cgi-bin/menu/addconditional?access_token={}", base_url, token);
-                let resp: serde_json::Value = client.post(&url)
-                    .json(&serde_json::json!({ "button": buttons, "matchrule": matchrule }))
-                    .send().await
-                    .map_err(|_e| { #[cfg(feature = "log")] tracing::error!({ code = 52311, msg = "conditional menu error" }, "{}", _e); menu_conditional_request() })?
-                    .json().await
-                    .map_err(|_e| { #[cfg(feature = "log")] tracing::error!({ code = 52306, msg = "conditional menu error" }, "{}", _e); menu_response() })?;
-                check_error(&resp)?;
-                Ok(resp)
-            }
-        }).await?;
+        let resp = self
+            .do_api(move |token| {
+                let base_url = base_url.clone();
+                let client = client.clone();
+                let buttons = buttons.clone();
+                let matchrule = matchrule.clone();
+                async move {
+                    let url = format!(
+                        "{}/cgi-bin/menu/addconditional?access_token={}",
+                        base_url, token
+                    );
+                    let resp: serde_json::Value = client
+                        .post(&url)
+                        .json(&serde_json::json!({ "button": buttons, "matchrule": matchrule }))
+                        .send()
+                        .await
+                        .map_err(|_e| {
+                            #[cfg(feature = "log")]
+                            let _ = crate::state::log_request_error(
+                                _e,
+                                52311,
+                                "WeChat conditional menu request failed",
+                            );
+                            menu_conditional_request()
+                        })?
+                        .json()
+                        .await
+                        .map_err(|_e| {
+                            #[cfg(feature = "log")]
+                            let _ = crate::state::log_request_error(
+                                _e,
+                                52306,
+                                "WeChat conditional menu response parse failed",
+                            );
+                            menu_response()
+                        })?;
+                    check_error(&resp)?;
+                    Ok(resp)
+                }
+            })
+            .await?;
 
         Ok(resp
             .get("menuid")
@@ -480,14 +560,22 @@ impl WxOfficial {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52311, msg = "conditional menu error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52311,
+                            "WeChat conditional menu request failed",
+                        );
                         menu_conditional_request()
                     })?
                     .json()
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52306, msg = "conditional menu error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52306,
+                            "WeChat conditional menu response parse failed",
+                        );
                         menu_response()
                     })?;
                 check_error(&resp)?;
@@ -516,14 +604,22 @@ impl WxOfficial {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52311, msg = "trymatch error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52311,
+                            "WeChat trymatch request failed",
+                        );
                         menu_conditional_request()
                     })?
                     .json()
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52306, msg = "trymatch error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52306,
+                            "WeChat trymatch response parse failed",
+                        );
                         menu_response()
                     })?;
                 check_error(&resp)?;
@@ -541,19 +637,44 @@ impl WxOfficial {
     pub async fn get_material_count(&self) -> crate::Result<MaterialCount> {
         let base_url = self.base_url.clone();
         let client = self.client.clone();
-        let resp = self.do_api(move |token| {
-            let base_url = base_url.clone();
-            let client = client.clone();
-            async move {
-                let url = format!("{}/cgi-bin/material/get_materialcount?access_token={}", base_url, token);
-                let resp: serde_json::Value = client.get(&url).send().await
-                    .map_err(|_e| { #[cfg(feature = "log")] tracing::error!({ code = 52308, msg = "material count error" }, "{}", _e); material_request() })?
-                    .json().await
-                    .map_err(|_e| { #[cfg(feature = "log")] tracing::error!({ code = 52309, msg = "material count error" }, "{}", _e); material_response() })?;
-                check_error(&resp)?;
-                Ok(resp)
-            }
-        }).await?;
+        let resp = self
+            .do_api(move |token| {
+                let base_url = base_url.clone();
+                let client = client.clone();
+                async move {
+                    let url = format!(
+                        "{}/cgi-bin/material/get_materialcount?access_token={}",
+                        base_url, token
+                    );
+                    let resp: serde_json::Value = client
+                        .get(&url)
+                        .send()
+                        .await
+                        .map_err(|_e| {
+                            #[cfg(feature = "log")]
+                            let _ = crate::state::log_request_error(
+                                _e,
+                                52308,
+                                "WeChat material count request failed",
+                            );
+                            material_request()
+                        })?
+                        .json()
+                        .await
+                        .map_err(|_e| {
+                            #[cfg(feature = "log")]
+                            let _ = crate::state::log_request_error(
+                                _e,
+                                52309,
+                                "WeChat material count response parse failed",
+                            );
+                            material_response()
+                        })?;
+                    check_error(&resp)?;
+                    Ok(resp)
+                }
+            })
+            .await?;
 
         serde_json::from_value(resp).map_err(|_e| {
             #[cfg(feature = "log")]
@@ -581,9 +702,9 @@ impl WxOfficial {
                 let resp: serde_json::Value = client.post(&url)
                     .json(&serde_json::json!({ "type": material_type, "offset": offset, "count": count }))
                     .send().await
-                    .map_err(|_e| { #[cfg(feature = "log")] tracing::error!({ code = 52308, msg = "material list error" }, "{}", _e); material_request() })?
+                    .map_err(|_e| { #[cfg(feature = "log")] let _ = crate::state::log_request_error(_e, 52308, "WeChat material list request failed"); material_request() })?
                     .json().await
-                    .map_err(|_e| { #[cfg(feature = "log")] tracing::error!({ code = 52309, msg = "material list error" }, "{}", _e); material_response() })?;
+                    .map_err(|_e| { #[cfg(feature = "log")] let _ = crate::state::log_request_error(_e, 52309, "WeChat material list response parse failed"); material_response() })?;
                 check_error(&resp)?;
                 Ok(resp)
             }
@@ -617,14 +738,22 @@ impl WxOfficial {
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52308, msg = "material delete error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52308,
+                            "WeChat material delete request failed",
+                        );
                         material_request()
                     })?
                     .json()
                     .await
                     .map_err(|_e| {
                         #[cfg(feature = "log")]
-                        tracing::error!({ code = 52309, msg = "material delete error" }, "{}", _e);
+                        let _ = crate::state::log_request_error(
+                            _e,
+                            52309,
+                            "WeChat material delete response parse failed",
+                        );
                         material_response()
                     })?;
                 check_error(&resp)?;
@@ -687,14 +816,19 @@ impl WxOfficial {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52202, msg = "WeChat mp login error" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 52202, "WeChat mp login request failed");
                 mp_request()
             })?
             .json::<serde_json::Value>()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52203, msg = "WeChat mp login error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52203,
+                    "WeChat mp login response parse failed",
+                );
                 mp_response()
             })?;
 
@@ -743,14 +877,22 @@ impl WxOfficial {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52205, msg = "WeChat mp refresh token error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52205,
+                    "WeChat mp refresh token request failed",
+                );
                 mp_refresh_request()
             })?
             .json::<serde_json::Value>()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52206, msg = "WeChat mp refresh token error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52206,
+                    "WeChat mp refresh token response parse failed",
+                );
                 mp_refresh_response()
             })?;
 
@@ -795,14 +937,22 @@ impl WxOfficial {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52207, msg = "WeChat mp check token error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52207,
+                    "WeChat mp check token request failed",
+                );
                 mp_check_request()
             })?
             .json()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52208, msg = "WeChat mp check token error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52208,
+                    "WeChat mp check token response parse failed",
+                );
                 mp_check_response()
             })?;
 
@@ -838,14 +988,19 @@ impl WxOfficial {
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52209, msg = "WeChat mp userinfo error" }, "{}", _e);
+                let _ =
+                    crate::state::log_request_error(_e, 52209, "WeChat mp userinfo request failed");
                 mp_userinfo_request()
             })?
             .json::<serde_json::Value>()
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 52210, msg = "WeChat mp userinfo error" }, "{}", _e);
+                let _ = crate::state::log_request_error(
+                    _e,
+                    52210,
+                    "WeChat mp userinfo response parse failed",
+                );
                 mp_userinfo_response()
             })?;
 

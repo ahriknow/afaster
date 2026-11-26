@@ -618,12 +618,20 @@ x-oss-signature-version=OSS4-HMAC-SHA256",
             .await
             .map_err(|_e| {
                 #[cfg(feature = "log")]
-                tracing::error!({ code = 50404, msg = "Aliyun OSS error" },  "{}", _e);
+                let _ = crate::state::log_request_error(_e, 50404, "Aliyun OSS STS request failed");
                 sts_request()
             })?;
 
         if !resp.status().is_success() {
-            let _body = resp.text().await.unwrap_or_default();
+            let _body = resp.text().await.unwrap_or_else(|_e| {
+                #[cfg(feature = "log")]
+                let _ = crate::state::log_request_error(
+                    _e,
+                    50405,
+                    "Aliyun OSS STS error response body read failed",
+                );
+                String::new()
+            });
             #[cfg(feature = "log")]
             tracing::error!({ code = 50405, msg = "Aliyun OSS error" },  "STS API error: {}", _body);
             return Err(sts_response());
@@ -631,7 +639,8 @@ x-oss-signature-version=OSS4-HMAC-SHA256",
 
         let sts_resp: StsResponse = resp.json().await.map_err(|_e| {
             #[cfg(feature = "log")]
-            tracing::error!({ code = 50406, msg = "Aliyun OSS error" },  "{}", _e);
+            let _ =
+                crate::state::log_request_error(_e, 50406, "Aliyun OSS STS response parse failed");
             sts_parse()
         })?;
 
