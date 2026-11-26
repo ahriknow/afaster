@@ -9,6 +9,7 @@
   - [微信公众号管理](./wx/wx-official.md)
   - [微信虚拟支付](./wx/wx-virtual-pay.md)
   - [微信内容安全](./wx/wx-sec-check.md)
+  - [微信云托管云调用](./tencent/wxcloudrun.md)
 - [阿里云]()
   - [支付宝电脑网站支付](./aliyun/ali-pay-web.md)
   - [阿里云 OSS](./aliyun/oss.md)

@@ -8,12 +8,12 @@ AFaster 的 ORM 驱动通过 Feature 选择。应用只应在配置中使用已�
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.12", default-features = false, features = [
+afaster = { version = "0.0.0", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-migrate",
 ] }
-afastorm = { version = "0.0.2", default-features = false, features = [
+afastorm = { version = "0.0.0", default-features = false, features = [
     "derive",
     "sqlite",
     "migrate",
@@ -73,8 +73,8 @@ url = "/admin"
 启用 MySQL 时，在 AFaster 和 `afastorm` 两侧都启用对应 feature：
 
 ```toml
-afaster = { version = "0.0.12", features = ["orm-mysql"] }
-afastorm = { version = "0.0.2", features = ["derive", "mysql", "migrate"] }
+afaster = { version = "0.0.0", features = ["orm-mysql"] }
+afastorm = { version = "0.0.0", features = ["derive", "mysql", "migrate"] }
 ```
 
 `orm-mysql`、`orm-postgres` 和 `orm-sqlite` 是互斥的编译期驱动选择。单个二进制只能使用当前编译启用的一个 ORM 驱动；切换数据库必须重新编译二进制或在完成动态 ORM 抽象前使用独立二进制。

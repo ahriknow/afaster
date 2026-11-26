@@ -1,6 +1,6 @@
 [package]
 name = "afaster-derive"
-version = "0.0.12"
+version = "0.0.13"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"

@@ -10,6 +10,7 @@ use serde::Deserialize;
     feature = "wx-login-mini",
     feature = "wx-login-app",
     feature = "wx-login-web",
+    feature = "wx-cloudrun",
     feature = "wx-official",
     feature = "oss",
     feature = "cos",
@@ -58,6 +59,9 @@ pub mod oss;
 
 #[cfg(feature = "cos")]
 pub mod cos;
+
+#[cfg(feature = "wx-cloudrun")]
+pub mod wxcloudrun;
 
 #[cfg(feature = "snow")]
 pub mod snow;
@@ -185,6 +189,8 @@ pub struct AppState {
     pub oss: oss::Oss,
     #[cfg(feature = "cos")]
     pub cos: cos::Cos,
+    #[cfg(feature = "wx-cloudrun")]
+    pub wxcloudrun: wxcloudrun::WxCloudRun,
     #[cfg(feature = "snow")]
     pub snow: snow::Snowflake,
     #[cfg(feature = "jwt")]
@@ -295,6 +301,8 @@ impl AppState {
             oss: oss::Oss::from_table(&table)?,
             #[cfg(feature = "cos")]
             cos: cos::Cos::from_table(&table)?,
+            #[cfg(feature = "wx-cloudrun")]
+            wxcloudrun: wxcloudrun::WxCloudRun::from_table(&table)?,
             #[cfg(feature = "snow")]
             snow: snow::Snowflake::from_table(&table)?,
             #[cfg(feature = "jwt")]

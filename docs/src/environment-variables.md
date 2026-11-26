@@ -88,6 +88,7 @@
 | `[wx_pay]` notify_url / refund_notify_url / platform_cert / callback_path | `WX_PAY_NOTIFY_URL` / `WX_PAY_REFUND_NOTIFY_URL` / `WX_PAY_PLATFORM_CERT` / `WX_PAY_CALLBACK_PATH` | 否 | 支付/退款通知 URL 和平台证书可选；callback path 有默认值 |
 | `[wx_sec_check]` app_id / app_secret | `WX_SEC_CHECK_APP_ID` / `WX_SEC_CHECK_APP_SECRET` | 是 | 微信内容安全凭证 |
 | `[wx_sec_check]` base_url / callback_path / verify_token / msg_secret | `WX_SEC_CHECK_BASE_URL` / `WX_SEC_CHECK_CALLBACK_PATH` / `WX_SEC_CHECK_VERIFY_TOKEN` / `WX_SEC_CHECK_MSG_SECRET` | 否 | API URL 和 callback path 使用默认值；验签字段按需配置 |
+| `[wxcloudrun].env` / `prefix` / `url_expire` | `WXCLOUDRUN_ENV` / `WXCLOUDRUN_PREFIX` / `WXCLOUDRUN_URL_EXPIRE` | env 是 | prefix 默认为空；URL 有效期 `3600` 秒（范围 1–604800） |
 | `[wx_virtual_pay]` offer_id / app_key / mini_id / mini_secret | `WX_VIRTUAL_PAY_OFFER_ID` / `WX_VIRTUAL_PAY_APP_KEY` / `WX_VIRTUAL_PAY_MINI_ID` / `WX_VIRTUAL_PAY_MINI_SECRET` | 是 | 虚拟支付及用于 session 的小程序凭证 |
 | `[wx_virtual_pay]` env / callback_path / verify_token / msg_secret | `WX_VIRTUAL_PAY_ENV` / `WX_VIRTUAL_PAY_CALLBACK_PATH` / `WX_VIRTUAL_PAY_VERIFY_TOKEN` / `WX_VIRTUAL_PAY_MSG_SECRET` | 否 | env 默认为 `0`；callback path 有默认值；验签字段按需配置 |
 | `[ali_pay]` app_id / private_key | `ALI_PAY_APP_ID` / `ALI_PAY_PRIVATE_KEY` | 是 | 支付宝应用 ID 和商户私钥 |

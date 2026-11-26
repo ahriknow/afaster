@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.0.13]
+
+- **WeChat Cloud Run**: Add the `wx-cloudrun` feature and `WxCloudRun` state module for configured upload prefixes and temporary upload/download links through OpenAPI without handling access tokens.
+
 ## [0.0.12]
 
 - **Configuration**: Allow `src/state` modules to read configuration from environment variables, with environment values taking precedence over TOML; report missing required settings and document defaults/variables.

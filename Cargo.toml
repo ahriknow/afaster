@@ -1,6 +1,6 @@
 [package]
 name = "afaster"
-version = "0.0.12"
+version = "0.0.13"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -13,7 +13,7 @@ categories = ["web-programming", "asynchronous"]
 members = ["afaster-derive", "examples/email", "examples/amap", "examples/tmap", "examples/redis", "examples/scheduler", "examples/excel", "examples/pdf", "examples/image", "examples/file", "examples/argon2", "example"]
 
 [workspace.package]
-version = "0.0.12"
+version = "0.0.13"
 edition = "2024"
 authors = ["ahriknow <ahriknow@ahriknow.com>"]
 license = "MIT"
@@ -62,6 +62,7 @@ ext = []
 nonce = ["base64", "hmac", "sha2"]
 auth-platform = []
 wx-login-mini = ["reqwest", "dep:serde_json"]
+wx-cloudrun = ["reqwest"]
 wx-login-app = ["reqwest", "dep:serde_json"]
 wx-login-web = ["reqwest", "dep:serde_json", "afast-ordinary-http"]
 wx-official = ["reqwest", "dep:serde_json", "afast-ordinary-http"]

@@ -25,13 +25,13 @@ ORM 与 [`database` 模块](../data/database.md)用途不同：
 
 ```toml
 [dependencies]
-afaster = { version = "0.0.12", default-features = false, features = [
+afaster = { version = "0.0.0", default-features = false, features = [
     "afast-http",
     "orm-sqlite",
     "orm-admin",
     "orm-migrate",
 ] }
-afastorm = { version = "0.0.2", default-features = false, features = [
+afastorm = { version = "0.0.0", default-features = false, features = [
     "derive",
     "sqlite",
     "migrate",

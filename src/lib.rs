@@ -90,6 +90,8 @@ pub use state::wx_pay;
 pub use state::wx_sec_check;
 #[cfg(feature = "wx-virtual-pay")]
 pub use state::wx_virtual_pay;
+#[cfg(feature = "wx-cloudrun")]
+pub use state::wxcloudrun;
 
 // ═══════════════════════════════════════════════════════════════
 //  公共导出：阿里云

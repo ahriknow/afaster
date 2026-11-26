@@ -16,7 +16,7 @@
 ```toml
 # Cargo.toml
 [dependencies]
-afaster = { version = "0.0.12", features = ["jwt", "log"] }
+afaster = { version = "0.0.0", features = ["jwt", "log"] }
 ```
 
 ```toml
