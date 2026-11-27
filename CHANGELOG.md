@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.16]
+
+### Added
+
+- **ORM**: Add `orm baseline` to write the registered model schema snapshot through the ORM command group.
+
+### Changed
+
+- **ORM**: Upgrade the `afastorm` dependency to 0.0.3 for model and field index attributes.
+
 ## [0.0.15]
 
 ### Changed

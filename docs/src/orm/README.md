@@ -19,7 +19,7 @@ ORM 与 [`database` 模块](../data/database.md)用途不同：
 | `orm-chrono` | 启用 `afastorm` 对 `chrono` 类型的支持 |
 | `orm-time` | 启用 `afastorm` 对 `time` crate 类型的支持 |
 | `orm-admin` | 挂载基于模型属性配置的管理端；需要同时启用一个 ORM 驱动 |
-| `orm-migrate` | 注册 `orm makemigrations` 和 `orm migrate` 命令 |
+| `orm-migrate` | 注册 `orm baseline`、`orm makemigrations` 和 `orm migrate` 命令 |
 
 示例依赖：
 

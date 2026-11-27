@@ -22,6 +22,14 @@ pub fn cloud_call_rejected(code: i64) -> crate::Error {
 }
 
 #[inline]
+pub fn download_call_rejected(code: i64) -> crate::Error {
+    crate::Error::custom(
+        53111,
+        format!("WeChat rejected the temporary-download request (errcode {code})"),
+    )
+}
+
+#[inline]
 pub fn missing_environment() -> crate::Error {
     crate::Error::custom(53105, "Missing [wxcloudrun].env or WXCLOUDRUN_ENV")
 }
@@ -60,4 +68,9 @@ pub fn file_download_link_rejected(code: i64) -> crate::Error {
 #[inline]
 pub fn invalid_file_id() -> crate::Error {
     crate::Error::custom(43102, "Invalid CloudBase file ID")
+}
+
+#[inline]
+pub fn invalid_image_process() -> crate::Error {
+    crate::Error::custom(43103, "Invalid COS image-processing command")
 }

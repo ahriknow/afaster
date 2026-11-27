@@ -27,6 +27,16 @@ async fn main() -> afaster::Result<()> {
 `orm-migrate` 会将 `orm` 命令组加入应用 CLI。应在启动服务、播种数据或执行其他有副作用的初始化前处理命令。
 `AFaster::new` 仍会先按配置初始化 ORM 连接；命令在 `run_command_if_requested()` 中执行，处理后提前退出，不会继续启动服务。运行 `makemigrations` 前必须通过 `with_orm` 注册模型。
 
+## 为已有数据库记录基线
+
+当已有数据库已经通过历史迁移建好表，并首次接入 schema diff 时，可使用 ORM 命令记录当前模型快照：
+
+```sh
+cargo run -- orm baseline --dir migrations
+```
+
+基线命令仅写入 `schema.json`，不连接数据库执行 DDL，也不会验证数据库实际结构。运行前必须确认历史迁移已应用，并确认模型与数据库结构一致；后续 `makemigrations` 会以该快照为起点生成差异。
+
 ## 生成迁移
 
 ```sh
@@ -39,7 +49,7 @@ cargo run -- orm makemigrations add_post_status --dir migrations
 cargo run -p example -- orm makemigrations add_post_status --dir migrations
 ```
 
-首次生成时，工具会创建 schema 快照和迁移文件。后续会将模型 registry 与 `schema.json` 对比，生成 `.up.sql` 和 `.down.sql`。若 schema 没有变化，会提示 `no schema changes found`。
+没有 schema 快照时，首次 `makemigrations` 会创建初始 schema 迁移和快照。已有数据库不要用初始迁移替代基线；应先运行 `orm baseline`。之后命令会将模型 registry 与 `schema.json` 对比，生成 `.up.sql` 和 `.down.sql`。若 schema 没有变化，会提示 `no schema changes found`。
 
 `--dir` 默认为 `migrations`，相对路径以当前工作目录解析。迁移名称会成为文件名的一部分，建议使用简短、可读的 snake_case 名称。
 

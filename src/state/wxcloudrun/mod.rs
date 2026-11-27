@@ -219,7 +219,7 @@ impl WxCloudRun {
             })?;
 
         if response.errcode != 0 {
-            return Err(err::cloud_call_rejected(response.errcode));
+            return Err(err::download_call_rejected(response.errcode));
         }
 
         let file = response
@@ -244,6 +244,16 @@ impl WxCloudRun {
             expires_in_seconds: self.url_expire_seconds,
             openapi_seqid,
         })
+    }
+
+    pub async fn get_temporary_access_url_with_image_process(
+        &self,
+        file_id: &str,
+        process: &str,
+    ) -> crate::Result<TemporaryAccessUrl> {
+        let mut access = self.get_temporary_access_url(file_id).await?;
+        access.url = append_cos_image_process(&access.url, process)?;
+        Ok(access)
     }
 
     fn object_path(&self, relative_path: &str) -> crate::Result<String> {
@@ -352,6 +362,45 @@ fn required_field(value: String) -> crate::Result<String> {
         return Err(err::upload_link_response_invalid());
     }
     Ok(value)
+}
+
+fn append_cos_image_process(url: &str, process: &str) -> crate::Result<String> {
+    if process.is_empty()
+        || process.len() > 4096
+        || !process.is_ascii()
+        || process.bytes().any(|byte| {
+            byte.is_ascii_control() || matches!(byte, b'?' | b'#' | b'&' | b'+' | b' ' | b'\\')
+        })
+    {
+        return Err(err::invalid_image_process());
+    }
+
+    let bytes = process.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit()
+            {
+                return Err(err::invalid_image_process());
+            }
+            index += 3;
+        } else {
+            index += 1;
+        }
+    }
+
+    let mut parsed_url =
+        reqwest::Url::parse(url).map_err(|_| err::download_link_response_invalid())?;
+    let query = parsed_url.query().unwrap_or_default();
+    let query = if query.is_empty() {
+        process.to_owned()
+    } else {
+        format!("{query}&{process}")
+    };
+    parsed_url.set_query(Some(&query));
+    Ok(parsed_url.into())
 }
 
 fn valid_cloud_path(path: &str) -> bool {
@@ -490,5 +539,33 @@ mod tests {
         assert!(cloudrun.owns_file_id("cloud://wx-env-id.bucket/items/images/a.png"));
         assert!(!cloudrun.owns_file_id("cloud://other-env.bucket/items/images/a.png"));
         assert!(!cloudrun.owns_file_id("cloud://wx-env-id.bucket/private/a.png"));
+    }
+
+    #[test]
+    fn appends_cos_image_processing_to_temporary_url_query() {
+        let url = append_cos_image_process(
+            "https://bucket.example/photo.jpg?sign=temporary&t=123",
+            "imageMogr2/thumbnail/!50p/quality/85/format/webp",
+        )
+        .unwrap();
+
+        assert_eq!(
+            url,
+            "https://bucket.example/photo.jpg?sign=temporary&t=123&imageMogr2/thumbnail/!50p/quality/85/format/webp"
+        );
+    }
+
+    #[test]
+    fn rejects_cos_image_processing_query_injection_and_invalid_escapes() {
+        for process in [
+            "",
+            "?imageMogr2/thumbnail/!50p",
+            "imageMogr2/thumbnail/!50p&admin=true",
+            "imageMogr2/thumbnail/!50p+admin",
+            "watermark/%GG",
+            "imageMogr2/thumbnail/!50p#fragment",
+        ] {
+            assert!(append_cos_image_process("https://bucket.example/photo.jpg", process).is_err());
+        }
     }
 }
