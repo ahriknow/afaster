@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.15]
+
+### Changed
+
+- **WxLogin**: Make the WeChat API base URL configurable through `base_url` or `WXLOGIN_BASE_URL`, supporting HTTP and HTTPS while defaulting to HTTPS.
+
 ## [0.0.14]
 
 ### Changed

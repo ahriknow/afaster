@@ -80,6 +80,7 @@
 
 | TOML section / fields | 环境变量 | 必填 | 默认值/说明 |
 |---|---|:---:|---|
+| `[wxlogin].base_url` | `WXLOGIN_BASE_URL` | 否 | 默认 `https://api.weixin.qq.com`；支持 `http` 和 `https` |
 | `[wxlogin]` mini_id / mini_secret | `WXLOGIN_MINI_ID` / `WXLOGIN_MINI_SECRET` | 启用 `wx-login-mini` 时是 | 小程序登录凭证 |
 | `[wxlogin]` app_id / app_secret | `WXLOGIN_APP_ID` / `WXLOGIN_APP_SECRET` | 启用 `wx-login-app` 时是 | 微信 App 登录凭证 |
 | `[wxlogin]` web_id / web_secret / redirect_base / callback_path | `WXLOGIN_WEB_ID` / `WXLOGIN_WEB_SECRET` / `WXLOGIN_REDIRECT_BASE` / `WXLOGIN_CALLBACK_PATH` | web_id、web_secret、redirect_base 在启用 `wx-login-web` 时是 | callback path 默认为 `auth/wechat/callback` |

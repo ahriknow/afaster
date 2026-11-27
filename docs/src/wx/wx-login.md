@@ -10,6 +10,9 @@
 
 ```toml
 [wxlogin]
+# 微信 API 地址，默认 HTTPS；可按需改为 "http://api.weixin.qq.com"
+# base_url = "https://api.weixin.qq.com"
+
 # 小程序登录
 mini_id = "wx1234567890"
 mini_secret = ""
@@ -26,6 +29,7 @@ redirect_base = "https://example.com"
 ```
 
 各登录方式只需配置对应的字段即可，未启用的 feature 对应的字段可省略。
+`base_url` 对所有 WxLogin API 请求生效，支持 `http` 和 `https`，默认使用 `https://api.weixin.qq.com`，也可通过 `WXLOGIN_BASE_URL` 设置。使用 HTTP 时，请确认网络环境可信；登录凭证和令牌可能通过 URL 参数传输。
 
 ---
 

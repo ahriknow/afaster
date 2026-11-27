@@ -20,6 +20,13 @@ use crate::state::callbacks::IntoCallback;
 #[derive(Clone, Deserialize)]
 #[serde(default)]
 pub struct WxLogin {
+    #[cfg(any(
+        feature = "wx-login-mini",
+        feature = "wx-login-app",
+        feature = "wx-login-web"
+    ))]
+    #[serde(default = "default_base_url")]
+    pub base_url: String,
     #[cfg(feature = "wx-login-mini")]
     pub mini_id: String,
     #[cfg(feature = "wx-login-mini")]
@@ -55,6 +62,12 @@ pub struct WxLogin {
 impl Default for WxLogin {
     fn default() -> Self {
         Self {
+            #[cfg(any(
+                feature = "wx-login-mini",
+                feature = "wx-login-app",
+                feature = "wx-login-web"
+            ))]
+            base_url: default_base_url(),
             #[cfg(feature = "wx-login-mini")]
             mini_id: String::new(),
             #[cfg(feature = "wx-login-mini")]
@@ -83,6 +96,15 @@ impl Default for WxLogin {
             web_login_callback: None,
         }
     }
+}
+
+#[cfg(any(
+    feature = "wx-login-mini",
+    feature = "wx-login-app",
+    feature = "wx-login-web"
+))]
+fn default_base_url() -> String {
+    "https://api.weixin.qq.com".to_string()
 }
 
 #[cfg(feature = "wx-login-mini")]
@@ -152,6 +174,20 @@ pub struct AppLoginResponse {
 }
 
 impl WxLogin {
+    #[cfg(any(
+        feature = "wx-login-mini",
+        feature = "wx-login-app",
+        feature = "wx-login-web"
+    ))]
+    fn api_url(&self, path: &str) -> String {
+        let base_url = self.base_url.trim_end_matches('/');
+        if path.starts_with('/') {
+            format!("{base_url}{path}")
+        } else {
+            format!("{base_url}/{path}")
+        }
+    }
+
     #[cfg(feature = "wx-login-mini")]
     async fn mini_access_token(&self) -> crate::Result<String> {
         let mut cache = self.mini_access_token.lock().await;
@@ -161,7 +197,7 @@ impl WxLogin {
             return Ok(token.value.clone());
         }
 
-        let mut url = reqwest::Url::parse("https://api.weixin.qq.com/cgi-bin/token")
+        let mut url = reqwest::Url::parse(&self.api_url("/cgi-bin/token"))
             .map_err(|_| mini_phone_token_url())?;
         url.query_pairs_mut()
             .append_pair("grant_type", "client_credential")
@@ -219,12 +255,11 @@ impl WxLogin {
     /// - `crate::Result<MiniLoginResponse>`
     pub async fn mini_login(&self, code: &str) -> crate::Result<MiniLoginResponse> {
         // 使用 url crate 构建带查询参数的 URL
-        let mut url =
-            reqwest::Url::parse("https://api.weixin.qq.com/sns/jscode2session").map_err(|_e| {
-                #[cfg(feature = "log")]
-                tracing::error!({ code = 50201, msg = "WeChat mini login error" },  "{}", _e);
-                mini_url()
-            })?;
+        let mut url = reqwest::Url::parse(&self.api_url("/sns/jscode2session")).map_err(|_e| {
+            #[cfg(feature = "log")]
+            tracing::error!({ code = 50201, msg = "WeChat mini login error" },  "{}", _e);
+            mini_url()
+        })?;
         url.query_pairs_mut()
             .append_pair("appid", &self.mini_id)
             .append_pair("secret", &self.mini_secret)
@@ -282,7 +317,7 @@ impl WxLogin {
         let access_token = self.mini_access_token().await?;
         let response = self
             .client
-            .post("https://api.weixin.qq.com/wxa/business/getuserphonenumber")
+            .post(self.api_url("/wxa/business/getuserphonenumber"))
             .query(&[("access_token", access_token)])
             .json(&serde_json::json!({ "code": code }))
             .send()
@@ -320,8 +355,8 @@ impl WxLogin {
     /// - `crate::Result<AppLoginResponse>`
     pub async fn app_login(&self, code: &str) -> crate::Result<AppLoginResponse> {
         // 使用 url crate 构建带查询参数的 URL
-        let mut url = reqwest::Url::parse("https://api.weixin.qq.com/sns/oauth2/access_token")
-            .map_err(|_e| {
+        let mut url =
+            reqwest::Url::parse(&self.api_url("/sns/oauth2/access_token")).map_err(|_e| {
                 #[cfg(feature = "log")]
                 tracing::error!({ code = 50301, msg = "WeChat APP login error" },  "{}", _e);
                 app_url()
@@ -420,8 +455,8 @@ impl WxLogin {
     /// # 返回
     /// - `crate::Result<WxWebAccessTokenResponse>`
     pub async fn web_login(&self, code: &str) -> crate::Result<WxWebAccessTokenResponse> {
-        let mut url = reqwest::Url::parse("https://api.weixin.qq.com/sns/oauth2/access_token")
-            .map_err(|_e| {
+        let mut url =
+            reqwest::Url::parse(&self.api_url("/sns/oauth2/access_token")).map_err(|_e| {
                 #[cfg(feature = "log")]
                 tracing::error!({ code = 52101, msg = "WeChat web login error" }, "{}", _e);
                 web_url()
@@ -487,8 +522,8 @@ impl WxLogin {
         &self,
         refresh_token: &str,
     ) -> crate::Result<WxWebAccessTokenResponse> {
-        let mut url = reqwest::Url::parse("https://api.weixin.qq.com/sns/oauth2/refresh_token")
-            .map_err(|_e| {
+        let mut url =
+            reqwest::Url::parse(&self.api_url("/sns/oauth2/refresh_token")).map_err(|_e| {
                 #[cfg(feature = "log")]
                 tracing::error!({ code = 52105, msg = "WeChat web refresh token error" }, "{}", _e);
                 web_refresh_request()
@@ -548,7 +583,7 @@ impl WxLogin {
     /// # 返回
     /// - `crate::Result<bool>` true 表示有效
     pub async fn web_check_token(&self, access_token: &str, openid: &str) -> crate::Result<bool> {
-        let mut url = reqwest::Url::parse("https://api.weixin.qq.com/sns/auth").map_err(|_e| {
+        let mut url = reqwest::Url::parse(&self.api_url("/sns/auth")).map_err(|_e| {
             #[cfg(feature = "log")]
             tracing::error!({ code = 52107, msg = "WeChat web check token error" }, "{}", _e);
             web_check_request()
@@ -600,12 +635,11 @@ impl WxLogin {
         openid: &str,
         lang: Option<&str>,
     ) -> crate::Result<WxWebUserInfo> {
-        let mut url =
-            reqwest::Url::parse("https://api.weixin.qq.com/sns/userinfo").map_err(|_e| {
-                #[cfg(feature = "log")]
-                tracing::error!({ code = 52109, msg = "WeChat web userinfo error" }, "{}", _e);
-                web_userinfo_request()
-            })?;
+        let mut url = reqwest::Url::parse(&self.api_url("/sns/userinfo")).map_err(|_e| {
+            #[cfg(feature = "log")]
+            tracing::error!({ code = 52109, msg = "WeChat web userinfo error" }, "{}", _e);
+            web_userinfo_request()
+        })?;
         url.query_pairs_mut()
             .append_pair("access_token", access_token)
             .append_pair("openid", openid)
@@ -785,7 +819,60 @@ impl WxLogin {
             .and_then(toml::Value::as_table)
             .cloned()
             .unwrap_or_default();
+        #[cfg(any(
+            feature = "wx-login-mini",
+            feature = "wx-login-app",
+            feature = "wx-login-web"
+        ))]
+        let base_url = match (map.get("base_url"), std::env::var("WXLOGIN_BASE_URL")) {
+            (_, Ok(value)) => value,
+            (Some(value), Err(std::env::VarError::NotPresent)) => value
+                .as_str()
+                .ok_or_else(|| crate::Error::custom(50001, "[wxlogin].base_url must be a string"))?
+                .to_owned(),
+            (None, Err(std::env::VarError::NotPresent)) => default_base_url(),
+            (_, Err(std::env::VarError::NotUnicode(_))) => {
+                return Err(crate::Error::custom(
+                    50001,
+                    "WXLOGIN_BASE_URL is not valid UTF-8",
+                ));
+            }
+        };
+        #[cfg(any(
+            feature = "wx-login-mini",
+            feature = "wx-login-app",
+            feature = "wx-login-web"
+        ))]
+        let parsed_base_url = reqwest::Url::parse(&base_url).map_err(|error| {
+            crate::Error::custom(50001, format!("[wxlogin].base_url is invalid: {error}"))
+        })?;
+        #[cfg(any(
+            feature = "wx-login-mini",
+            feature = "wx-login-app",
+            feature = "wx-login-web"
+        ))]
+        if !matches!(parsed_base_url.scheme(), "http" | "https")
+            || parsed_base_url.query().is_some()
+            || parsed_base_url.fragment().is_some()
+        {
+            return Err(crate::Error::custom(
+                50001,
+                "[wxlogin].base_url must use http or https and must not contain a query or fragment",
+            ));
+        }
+        #[cfg(any(
+            feature = "wx-login-mini",
+            feature = "wx-login-app",
+            feature = "wx-login-web"
+        ))]
+        let base_url = base_url.trim_end_matches('/').to_owned();
         Ok(Self {
+            #[cfg(any(
+                feature = "wx-login-mini",
+                feature = "wx-login-app",
+                feature = "wx-login-web"
+            ))]
+            base_url,
             #[cfg(feature = "wx-login-mini")]
             mini_id: match (map.get("mini_id"), std::env::var("WXLOGIN_MINI_ID")) {
                 (_, Ok(value)) => value,
@@ -974,5 +1061,33 @@ impl WxLogin {
             #[cfg(feature = "wx-login-web")]
             web_login_callback: None,
         })
+    }
+}
+
+#[cfg(all(
+    test,
+    any(
+        feature = "wx-login-mini",
+        feature = "wx-login-app",
+        feature = "wx-login-web"
+    )
+))]
+mod tests {
+    use super::WxLogin;
+
+    #[test]
+    fn api_url_uses_the_configured_http_scheme() {
+        let mut login = WxLogin::default();
+        assert_eq!(login.base_url, "https://api.weixin.qq.com");
+        assert_eq!(
+            login.api_url("/sns/jscode2session"),
+            "https://api.weixin.qq.com/sns/jscode2session"
+        );
+
+        login.base_url = "http://api.weixin.qq.com/".to_string();
+        assert_eq!(
+            login.api_url("/sns/jscode2session"),
+            "http://api.weixin.qq.com/sns/jscode2session"
+        );
     }
 }
